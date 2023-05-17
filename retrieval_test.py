@@ -1,14 +1,10 @@
-import time
-import os
-
-import numpy as np
+import pymysql
+import ast
+import sys
 import trimesh.sample
 from scipy.spatial.distance import cdist
 from DLFS_calculation import *
 from global_descriptor import D2, sparseCoding
-import matplotlib.pyplot as plt
-
-
 def calcDescriptors(mesh, codebook):
     points = trimesh.sample.sample_surface(mesh, 20000)[0]
     mr = meshResolution(points)
@@ -21,12 +17,17 @@ def calcDescriptors(mesh, codebook):
     return distribution/20000, bof_descriptor
 
 
-def retrieve_test(mesh, k, codebook):
-    query_bof = calcDescriptors(mesh, codebook)[1]
-    distances = cdist(query_bof.reshape(1, query_bof.shape[0]), descriptor_set, metric='canberra')
-    idx = np.argsort(distances[0])[:k+1]
-    closest = names[idx]
-    return closest
+def retrieve_test(mesh_path, k=10):
+    mesh = trimesh.load_mesh(mesh_path)
+    d2, bof_desc = calcDescriptors(mesh, codebook)
+    descriptor = np.hstack((d2, bof_desc))
+    fuse_descs = np.hstack((d2_list, descriptors))
+
+    dists = cdist(descriptor.reshape(1, descriptor.shape[0]), fuse_descs, metric='canberra')
+
+    close_idx = np.argsort(dists[0])[:k + 1]
+    retrieval_result = names[close_idx]
+    return retrieval_result
 
 
 def pr_curve(retrieval_results, category_name, category_total, resolution=0.1):
@@ -42,9 +43,54 @@ def pr_curve(retrieval_results, category_name, category_total, resolution=0.1):
     return np.array(precision), np.array(recall)
 
 
-descriptor_set = np.load('C:/Users/Admin/CAD_parts/descriptors.npy')
-names = np.load('C:/Users/Admin/CAD_parts/names.npy')
 codebook = np.load(r'C:/Users/Admin/CAD_parts/codebook.npy')
+mesh_path = sys.argv[1]
+category = sys.argv[2].lower()
+clientInfo = sys.argv[3].lower()
+k = int(sys.argv[4])
+
+names = []
+
+db = pymysql.connect(host='106.15.224.125', user='demo', password='root1234!', database='demo', cursorclass=pymysql.cursors.DictCursor)
+cursor = db.cursor()
+d2_list = np.zeros((1, 100))
+descriptors = np.zeros((1, 100))
+try:
+    with db.cursor() as cursor:
+        # Read some records
+        if category != 'all' and clientInfo != 'all':
+            sql = "SELECT `partType`, `partName`, `distributeDesc`, `bofDesc`, `clientInfo` FROM `part_desc` " \
+                  "WHERE `partType` = %s AND `clientInfo` = %s"
+            cursor.execute(sql, (category, clientInfo))
+        elif category != 'all' and clientInfo == 'all':
+            sql = "SELECT `partType`, `partName`, `distributeDesc`, `bofDesc` FROM `part_desc` " \
+                  "WHERE `partType` = %s"
+            cursor.execute(sql, category)
+        elif category == 'all' and clientInfo != 'all':
+            sql = "SELECT `partName`, `distributeDesc`, `bofDesc`, `clientInfo` FROM `part_desc` " \
+                  "WHERE `clientInfo` = %s"
+            cursor.execute(sql, clientInfo)
+        elif category == 'all' and clientInfo == 'all':
+            sql = "SELECT `partName`, `distributeDesc`, `bofDesc` FROM `part_desc`"
+            cursor.execute(sql)
+
+        result = cursor.fetchall()
+        for row in result:
+            names.append(row['partName'])
+            d2 = ast.literal_eval(row['distributeDesc'])
+            bof_desc = ast.literal_eval(row['bofDesc'])
+
+            d2_list = np.vstack((d2_list, d2))
+            descriptors = np.vstack((descriptors, bof_desc))
+
+finally:
+    db.close()
+
+# Convert lists to numpy arrays
+names = np.array(names)
+d2_list = d2_list[1:]
+descriptors = descriptors[1:]
+print(retrieve_test(mesh_path, k))
 # data_dir = r'C:/Users/Admin/CAD_parts'
 # category = 'Bearings'
 # n_category = 58
@@ -72,54 +118,54 @@ codebook = np.load(r'C:/Users/Admin/CAD_parts/codebook.npy')
 # plt.show()
 
 
+# def retrieve(query_name, k):
+#     d2_list = np.load('C:/Users/Admin/CAD_parts/d2_list.npy')
+#     size = d2_list.shape[0]
+#     n = 600
+#     nn = NearestNeighbors(n_neighbors=n+1, metric='canberra')
+#     nn.fit(d2_list)
+#     distances, indices_list = nn.kneighbors(d2_list)
+#
+#     names = np.load('C:/Users/Admin/CAD_parts/names.npy')
+#
+#     index = (names == query_name)
+#     distances = cdist(descriptor_set[index], descriptor_set[indices_list[index]][0], metric='canberra')
+#     idx = np.argsort(distances[0])[:k+1]
+#     closest = names[indices_list[index][0][idx]]
+#
+#
+#     # summary = 0
+#     #
+#     # for i in range(size):
+#     #     str_list = names[i].split('_')
+#     #     n = len(str_list)
+#     #     category = ''
+#     #     for j in range(n-1):
+#     #         category += str_list[j] + '_'
+#     #     name = names[i]
+#     #     # print(category)
+#     #     # print(name)
+#     #     distances = cdist(descriptor_set[i].reshape(1, descriptor_set[i].shape[0]), descriptor_set[indices_list[i]], metric='canberra')
+#     #     idx = np.argsort(distances[0])[:k+1]
+#     #     closest = names[indices_list[i][idx[:k + 1]]]
+#     #     if category == '':
+#     #         print(name)
+#     #         print(closest)
+#     #     print(name, ':')
+#     #     for j in range(k+1):
+#     #         if closest[j].startswith(category) and closest[j] != name:
+#     #             print(closest[j])
+#     #             summary += 1
+#     #         #elif closest[j] != name:
+#     #         #    print(name,  closest[j], '\n')
+#     #     print('')
+#     #
+#     # print(summary/(k * size))
+#
+#     return closest
 
-def retrieve(query_name, k):
-    d2_list = np.load('C:/Users/Admin/CAD_parts/d2_list.npy')
-    size = d2_list.shape[0]
-    n = 400
-    nn = NearestNeighbors(n_neighbors=n+1, metric='canberra')
-    nn.fit(d2_list)
-    distances, indices_list = nn.kneighbors(d2_list)
-
-    names = np.load('C:/Users/Admin/CAD_parts/names.npy')
-
-    # index = (names == query_name)
-    # distances = cdist(descriptor_set[index], descriptor_set[indices_list[index]][0], metric='canberra')
-    # idx = np.argsort(distances[0])[:k+1]
-    # closest = names[indices_list[index][0][idx]]
 
 
-    summary = 0
-    
-    for i in range(size):
-        str_list = names[i].split('_')
-        n = len(str_list)
-        category = ''
-        for j in range(n-1):
-            category += str_list[j] + '_'
-        name = names[i]
-        # print(category)
-        # print(name)
-        distances = cdist(descriptor_set[i].reshape(1, descriptor_set[i].shape[0]), descriptor_set[indices_list[i]], metric='canberra')
-        idx = np.argsort(distances[0])[:k+1]
-        closest = names[indices_list[i][idx[:k + 1]]]
-        if category == '':
-            print(name)
-            print(closest)
-        print(name, ':')
-        for j in range(k+1):
-            if closest[j].startswith(category) and closest[j] != name:
-                print(closest[j])
-                summary += 1
-            #elif closest[j] != name:
-            #    print(name,  closest[j], '\n')
-        print('')
-    
-    print(summary/(k * size))
-
-    return
-
-retrieve('a', k=10)
 
 '''
 nn = NearestNeighbors(n_neighbors=k+1, metric='canberra')
