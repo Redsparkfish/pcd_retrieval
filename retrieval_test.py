@@ -51,7 +51,7 @@ k = int(sys.argv[4])
 
 names = []
 
-db = pymysql.connect(host='106.15.224.125', user='demo', password='root1234!', database='demo', cursorclass=pymysql.cursors.DictCursor)
+db = pymysql.connect(host='your host', user='your user', password='your password!', database='your database', cursorclass=pymysql.cursors.DictCursor)
 cursor = db.cursor()
 d2_list = np.zeros((1, 100))
 descriptors = np.zeros((1, 100))
