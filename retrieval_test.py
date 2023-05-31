@@ -1,10 +1,14 @@
 import pymysql
-import ast
 import sys
-import trimesh.sample
+import trimesh
 from scipy.spatial.distance import cdist
 from DLFS_calculation import *
 from global_descriptor import D2, sparseCoding
+import json
+import os
+import pandas as pd
+
+
 def calcDescriptors(mesh, codebook):
     points = trimesh.sample.sample_surface(mesh, 20000)[0]
     mr = meshResolution(points)
@@ -26,11 +30,10 @@ def retrieve_test(mesh_path, k=10):
     dists = cdist(descriptor.reshape(1, descriptor.shape[0]), fuse_descs, metric='canberra')
 
     close_idx = np.argsort(dists[0])[:k + 1]
-    retrieval_result = names[close_idx]
-    return retrieval_result
+    return close_idx
 
 
-def pr_curve(retrieval_results, category_name, category_total, resolution=0.1):
+def pr_curve(retrieval_results, category_name, category_total):
     k = 0
     precision = []
     recall = []
@@ -43,18 +46,23 @@ def pr_curve(retrieval_results, category_name, category_total, resolution=0.1):
     return np.array(precision), np.array(recall)
 
 
-codebook = np.load(r'C:/Users/Admin/CAD_parts/codebook.npy')
 mesh_path = sys.argv[1]
 category = sys.argv[2].lower()
+if category != 'all':
+    category = category[0].upper() + category[1:].lower()
 clientInfo = sys.argv[3].lower()
 k = int(sys.argv[4])
 
-names = []
+configPath = sys.argv[5]
 
-db = pymysql.connect(host='your host', user='your user', password='your password!', database='your database', cursorclass=pymysql.cursors.DictCursor)
+file = open(configPath, 'r')
+config = json.load(file)
+data_dir = config['data_dir']
+codebook = np.load(data_dir+'/codebook.npy')
+
+
+db = pymysql.connect(host=config['db_host'], user=config['db_user'], password=config['db_password'], database=config['db_database'], cursorclass=pymysql.cursors.DictCursor)
 cursor = db.cursor()
-d2_list = np.zeros((1, 100))
-descriptors = np.zeros((1, 100))
 try:
     with db.cursor() as cursor:
         # Read some records
@@ -67,30 +75,35 @@ try:
                   "WHERE `partType` = %s"
             cursor.execute(sql, category)
         elif category == 'all' and clientInfo != 'all':
-            sql = "SELECT `partName`, `distributeDesc`, `bofDesc`, `clientInfo` FROM `part_desc` " \
+            sql = "SELECT `partType`, `partName`, `distributeDesc`, `bofDesc`, `clientInfo` FROM `part_desc` " \
                   "WHERE `clientInfo` = %s"
             cursor.execute(sql, clientInfo)
         elif category == 'all' and clientInfo == 'all':
-            sql = "SELECT `partName`, `distributeDesc`, `bofDesc` FROM `part_desc`"
+            sql = "SELECT `partType`, `partName`, `distributeDesc`, `bofDesc` FROM `part_desc`"
             cursor.execute(sql)
 
         result = cursor.fetchall()
-        for row in result:
-            names.append(row['partName'])
-            d2 = ast.literal_eval(row['distributeDesc'])
-            bof_desc = ast.literal_eval(row['bofDesc'])
-
-            d2_list = np.vstack((d2_list, d2))
-            descriptors = np.vstack((descriptors, bof_desc))
 
 finally:
     db.close()
 
-# Convert lists to numpy arrays
-names = np.array(names)
-d2_list = d2_list[1:]
-descriptors = descriptors[1:]
-print(retrieve_test(mesh_path, k))
+df = pd.DataFrame(result)
+categories = df['partType'].tolist()
+names = df['partName'].to_numpy()
+d2_list = np.array(df['distributeDesc'].apply(json.loads).to_list())
+descriptors = np.array(df['bofDesc'].apply(json.loads).to_list())
+idx = retrieve_test(mesh_path, k)
+results = '{\n' + json.dumps('stlList') + ':[\n'
+for i in range(k):
+    results += json.dumps({"index": i, "name": names[idx[i]], "path": (os.path.join(data_dir, categories[idx[i]], 'STL', names[idx[i]]))})
+    if i < k-1:
+        results += ','
+    results += '\n'
+results += ']\n}'
+
+results = eval(repr(results).replace('\\\\', '/'))
+results = eval(repr(results).replace('//', '/'))
+print(results)
 # data_dir = r'C:/Users/Admin/CAD_parts'
 # category = 'Bearings'
 # n_category = 58
@@ -164,37 +177,32 @@ print(retrieve_test(mesh_path, k))
 #
 #     return closest
 
-
-
-
-'''
-nn = NearestNeighbors(n_neighbors=k+1, metric='canberra')
-nn.fit(descriptors)
-distances, indices_list = nn.kneighbors(descriptors)
-
-summary = 0
-for i in range(size):
-    str_list = names[i].split('_')
-    n = len(str_list)
-    category = ''
-    for j in range(n - 1):
-        category += str_list[j] + '_'
-    name = names[i]
-    closest = names[indices_list[i]][1:]
-    for j in range(k):
-        if closest[j].startswith(category):
-            summary += 1
-print(summary/(k * size))
-'''
-'''
-input_name = 'Bearings_24161c0b-afc7-449c-a803-62ae4e88cc73.stl'
-ft = 58
-result = retrieve(input_name, 2*ft+1)
-summary = 0
-category = 'Bearings'
-for j in range(2*ft+1):
-    if result[j].startswith(category):
-        summary += 1
-
-print(summary/ft)
-'''
+# nn = NearestNeighbors(n_neighbors=k+1, metric='canberra')
+# nn.fit(descriptors)
+# distances, indices_list = nn.kneighbors(descriptors)
+#
+# summary = 0
+# for i in range(size):
+#     str_list = names[i].split('_')
+#     n = len(str_list)
+#     category = ''
+#     for j in range(n - 1):
+#         category += str_list[j] + '_'
+#     name = names[i]
+#     closest = names[indices_list[i]][1:]
+#     for j in range(k):
+#         if closest[j].startswith(category):
+#             summary += 1
+# print(summary/(k * size))
+# '''
+# '''
+# input_name = 'Bearings_24161c0b-afc7-449c-a803-62ae4e88cc73.stl'
+# ft = 58
+# result = retrieve(input_name, 2*ft+1)
+# summary = 0
+# category = 'Bearings'
+# for j in range(2*ft+1):
+#     if result[j].startswith(category):
+#         summary += 1
+#
+# print(summary/ft)
