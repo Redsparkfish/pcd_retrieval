@@ -21,21 +21,33 @@ def calcDescriptors(mesh, codebook):
     return distribution/20000, bof_descriptor
 
 
-data_dir = r'C:\Users\Admin\CAD_parts'
-codebook = np.load(r'C:\Users\Admin\CAD_parts/codebook.npy')
-category = 'Bearings'
-name = r'Bearings_115.stl'
-mesh = trimesh.load_mesh(r'C:\Users\Admin\CAD_parts\Bearings\STL' + name)
-distribution_desc, bof_desc = calcDescriptors(mesh, codebook)
-db = pymysql.connect(host='106.15.224.125', user='demo', password='root1234!', database='demo')
+file = open('configuration.json')
+config = json.load(file)
+data_dir = config['data_dir']
+codebook = np.load(os.path.join(data_dir, 'codebook.npy'))
+update_dir = os.path.join(data_dir, 'temp_update')
 
-data = {'partType': category,
-        'partName': name,
-        'distributeDesc': numpy_to_json(distribution_desc),
-        'bofDesc': numpy_to_json(bof_desc)}
-with db.cursor() as cursor:
-    sql = "INSERT INTO `part_desc` (`partType`, `partName`, `distributeDesc`, `bofDesc`) VALUES (%s, %s, %s, %s)"
-    cursor.execute(sql, (data['partType'], data['partName'], data['distributeDesc'], data['bofDesc']))
+db = pymysql.connect(host=config['db_host'], user=config['db_user'], password=config['db_password'], database=config['db_database'])
+cursor = db.cursor()
+for category in os.listdir(update_dir):
+    if not os.path.isdir(os.path.join(update_dir, category)):
+        continue
+    for filename in os.listdir(os.path.join(update_dir, category, 'STL')):
+        if not filename.endswith('stl'):
+            continue
+        mesh = trimesh.load_mesh(os.path.join(update_dir, 'STL', filename))
+        distribution_desc, bof_desc = calcDescriptors(mesh, codebook)
+
+        data = {'partType': category,
+                'partName': filename,
+                'distributeDesc': numpy_to_json(distribution_desc),
+                'bofDesc': numpy_to_json(bof_desc)}
+        sql = "INSERT INTO `part_desc` (`partType`, `partName`, `distributeDesc`, `bofDesc`) VALUES (%s, %s, %s, %s) " \
+              "AS new ON DUPLICATE KEY UPDATE " \
+              "distributeDesc=new.distributeDesc, " \
+              "bofDesc=new.bofDesc"
+        cursor.execute(sql, (data['partType'], data['partName'], data['distributeDesc'], data['bofDesc']))
+        print(filename, 'data uploaded')
 
 db.commit()
 db.close()
