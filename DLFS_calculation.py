@@ -1,17 +1,16 @@
 import os
 import time
-import open3d
-import trimesh
-import pymeshlab
+# import pymeshlab
 import numpy as np
+import trimesh
 from sklearn.neighbors import NearestNeighbors
 
 
-def simplification(path):
-    ms = pymeshlab.MeshSet()
-    ms.load_new_mesh(path)
-    ms.meshing_decimation_clustering()
-    ms.save_current_mesh(path)
+# def simplification(path):
+#     ms = pymeshlab.MeshSet()
+#     ms.load_new_mesh(path)
+#     ms.meshing_decimation_clustering()
+#     ms.save_current_mesh(path)
 
 
 def getKNeighbors(points, k):
@@ -104,7 +103,7 @@ def getLMA(points, eigvectors, radius=7):
         sum_d_vector = np.sum(d_vectors, axis=0)
         if np.dot(eigvectors[i], sum_d_vector) < 0:
             LRA = -LRA
-            LRA /= np.linalg.norm(LRA)
+        LRA /= np.linalg.norm(LRA)
         return LRA
 
     LRAs = np.apply_along_axis(calcLRA, -1, np.arange(size).reshape(size, 1))
@@ -178,30 +177,32 @@ def meshResolution(points):
 
 
 def computeDLFS(data_dir):
-    data_dir = input('Enter the directory to your database:')
     DLFS_features = []
     key_indices_list = []
-    names = []
     tic = time.time()
     for folder in os.listdir(data_dir):
         # Skip any files in the data directory
         if not os.path.isdir(os.path.join(data_dir, folder)):
             continue
-
+        # Skip the update directory
+        if folder.lower() in ['update', 'temp_update']:
+            continue
         category_tic = time.time()
-
         k = 0
-        for filename in os.listdir(os.path.join(data_dir, folder)):
-            if not filename.endswith('.npy'):
+        for filename in os.listdir(os.path.join(data_dir, folder, 'STL')):
+            if not filename.endswith('.stl'):
                 continue
-            names.append(filename)
             # record time
             # tic = time.time()
 
             # Load the mesh file
-            path = os.path.join(data_dir, folder, filename)
-            points = np.load(path)
+            path = os.path.join(data_dir, folder, 'STL', filename)
+            mesh = trimesh.load_mesh(path)
+            points = trimesh.sample.sample_surface(mesh, 20000)[0]
             points = np.unique(points, axis=0)
+            if not os.path.exists(os.path.join(data_dir, folder, 'PCD')):
+                os.makedirs(os.path.join(data_dir, folder, 'PCD'))
+            np.save(os.path.join(data_dir, folder, 'PCD', filename[:-4]+'.npy'), points)
             mr = meshResolution(points)
 
             # Extract ISS keypoints
@@ -211,16 +212,17 @@ def computeDLFS(data_dir):
             # Extract DLFS features from the mesh
             LMA = getLMA(points, eigvectors, radius=7 * mr)
             DLFSs = getDLFS(points, LMA, key_indices, R=20 * mr)
+            DLFSs = DLFSs.reshape(DLFSs.shape[0], DLFSs.shape[1]*DLFSs.shape[2])
             # Append the features to the list
             DLFS_features.append(DLFSs)
             key_indices_list.append(key_indices)
             k += 1
-        print(folder, 'category calculated in', time.time() - category_tic, 'seconds')
 
-    print((time.time() - tic) / 60, 'min')
-    return DLFS_features, key_indices_list, names
+    print('Calculation finished in', (time.time() - tic) / 60, 'min.')
+    return DLFS_features, key_indices_list
 
 
+# computeDLFS(r'C:\Users\Admin\CAD_parts')
 '''
 mesh = trimesh.load_mesh(r'C:/Users/Admin/模型分类/新建文件夹/8 (2).stl')
 points = trimesh.sample.sample_surface(mesh, 10000)[0]
