@@ -22,26 +22,30 @@ def sparseCoding(DLFS: np.ndarray, codebook):
         sparse_descriptor[j] = np.sum(mask)
     return sparse_descriptor
 
+
 def computeGlobalDescriptors(data_dir, DLFS_set, codebook):
     num_clusters = codebook.shape[0]
     descriptors = np.zeros((DLFS_set.shape[0], num_clusters))
     D2s = np.zeros((DLFS_set.shape[0], 100))
     k = 0
+    names = []
+    categories = []
     for category in os.listdir(data_dir):
         if not os.path.isdir(os.path.join(data_dir, category)):
             continue
-        for filename in os.listdir(os.path.join(data_dir, category, 'STL')):
-            if not filename.endswith('.stl'):
+        if category.lower() in ['update', 'temp_update']:
+            continue
+        for filename in os.listdir(os.path.join(data_dir, category, 'PCD')):
+            if not filename.endswith('.npy'):
                 continue
-
-            path = os.path.join(data_dir, category, 'STL', filename)
-            mesh = trimesh.load_mesh(path)
-            points = trimesh.sample.sample_surface(mesh, 10000)[0]
-            points = np.unique(points, axis=0)
+            names.append(filename[:-4]+'.stl')
+            categories.append(category)
+            path = os.path.join(data_dir, category, 'PCD', filename)
+            points = np.load(path)
             distribution = D2(points)
             D2s[k] = distribution
             descriptor = sparseCoding(DLFS_set[k], codebook)
             descriptors[k] = descriptor
             k += 1
         print(category, 'finished')
-    return descriptors, D2s
+    return descriptors, D2s, names, categories
