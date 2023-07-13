@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
 
 
 def construct_bof(DLFS_set: np.ndarray):
@@ -20,6 +21,21 @@ def construct_bof(DLFS_set: np.ndarray):
 def construct_codebook(bof, num_clusters=100):
     kmeans = KMeans(n_clusters=num_clusters, random_state=0)
     kmeans.fit(bof)
-    centers = kmeans.cluster_centers_
-    labels = kmeans.labels_
-    return centers, labels
+    kmeans.cluster_centers_
+    return kmeans
+
+
+def construct_high_codebook(kmeans_list, num_high_clusters=100):
+    all_centers = np.concatenate([kmeans_list[i].cluster_centers_ for i in range(len(kmeans_list))])
+    kmeans = KMeans(n_clusters=num_high_clusters, random_state=0)
+    kmeans.fit(all_centers)
+    return kmeans
+
+
+def GMM_coding(bof, K=100):
+    gm = GaussianMixture(n_components=K, covariance_type='diag', max_iter=10000, random_state=0)
+    gm.fit(bof)
+    GMM_means = gm.means_
+    GMM_cov = gm.covariances_
+    GMM_weights = gm.weights_
+    return GMM_means, GMM_cov, GMM_weights

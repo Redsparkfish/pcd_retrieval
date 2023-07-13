@@ -153,9 +153,20 @@ def getDLFS(points, LMA, key_indices, N=[5, 9, 12, 12, 15], lamda=[0.6, 1.1, 1, 
         for i in range(N[0]):
             indices = np.logical_and(i * R / N[0] < distances, distances <= (i + 1) * R / N[0])
             H_lh[i] = np.histogram(lh[indices], bins=N[1], range=(0, 2 * R))[0]
+            if np.sum(H_lh[i]) != 0:
+                H_lh[i] /= np.sum(H_lh[i])
+
             H_alpha[i] = np.histogram(alpha[indices], bins=N[2], range=(0, np.pi))[0]
+            if np.sum(H_alpha[i]) != 0:
+                H_alpha[i] /= np.sum(H_alpha[i])
+
             H_beta[i] = np.histogram(beta[indices], bins=N[3], range=(0, np.pi))[0]
+            if np.sum(H_beta[i]) != 0:
+                H_beta[i] /= np.sum(H_beta[i])
+
             H_gamma[i] = np.histogram(gamma[indices], bins=N[4], range=(0, np.pi))[0]
+            if np.sum(H_gamma[i]) != 0:
+                H_gamma[i] /= np.sum(H_gamma[i])
 
         result = np.hstack((lamda[0] * H_lh,
                             lamda[1] * H_alpha,
@@ -176,8 +187,9 @@ def meshResolution(points):
     return mr
 
 
-def computeDLFS(data_dir):
-    DLFS_features = []
+def computeDLFS(data_dir, mode='update'):
+    new_names = []
+    new_categories = []
     key_indices_list = []
     tic = time.time()
     for folder in os.listdir(data_dir):
@@ -188,17 +200,19 @@ def computeDLFS(data_dir):
         if folder.lower() in ['update', 'temp_update']:
             continue
         category_tic = time.time()
-        k = 0
         for filename in os.listdir(os.path.join(data_dir, folder, 'STL')):
             if not filename.endswith('.stl'):
                 continue
-            # record time
-            # tic = time.time()
-
-            # Load the mesh file
+            if os.path.exists(os.path.join(data_dir, folder, 'DCT', filename[:-4]+'.npy')):
+                if mode.lower() != 'update':
+                    new_names.append(filename[:-4])
+                    new_categories.append(folder)
+                continue
+            new_names.append(filename[:-4])
+            new_categories.append(folder)
             path = os.path.join(data_dir, folder, 'STL', filename)
             mesh = trimesh.load_mesh(path)
-            points = trimesh.sample.sample_surface(mesh, 20000)[0]
+            points = trimesh.sample.sample_surface(mesh, 50000)[0]
             points = np.unique(points, axis=0)
             if not os.path.exists(os.path.join(data_dir, folder, 'PCD')):
                 os.makedirs(os.path.join(data_dir, folder, 'PCD'))
@@ -214,21 +228,22 @@ def computeDLFS(data_dir):
             DLFSs = getDLFS(points, LMA, key_indices, R=20 * mr)
             DLFSs = DLFSs.reshape(DLFSs.shape[0], DLFSs.shape[1]*DLFSs.shape[2])
             # Append the features to the list
-            DLFS_features.append(DLFSs)
+
+            if not os.path.exists(os.path.join(data_dir, folder, 'DCT')):
+                os.makedirs(os.path.join(data_dir, folder, 'DCT'))
+            np.save(os.path.join(data_dir, folder, 'DCT', filename[:-4] + '.npy'), DLFSs)
             key_indices_list.append(key_indices)
-            k += 1
 
     print('Calculation finished in', (time.time() - tic) / 60, 'min.')
-    return DLFS_features, key_indices_list
+    return np.array(key_indices_list), np.array(new_names), np.array(new_categories)
 
 
-# computeDLFS(r'C:\Users\Admin\CAD_parts')
-'''
-mesh = trimesh.load_mesh(r'C:/Users/Admin/模型分类/新建文件夹/8 (2).stl')
-points = trimesh.sample.sample_surface(mesh, 10000)[0]
-mr = meshResolution(points)
-key_indices, neighborSet, eigvectors = computeISS(points, radius=7/3*mr)
-keypoints = points[key_indices]
-pcd = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(keypoints))
-open3d.visualization.draw([pcd])
-'''
+# computeDLFS(r'C:\Users\Admin\模型分类_mesh')
+
+# mesh = trimesh.load_mesh(r'C:/Users/Admin/模型分类/新建文件夹/8 (2).stl')
+# points = trimesh.sample.sample_surface(mesh, 10000)[0]
+# mr = meshResolution(points)
+# key_indices, neighborSet, eigvectors = computeISS(points, radius=7/3*mr)
+# keypoints = points[key_indices]
+# pcd = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(keypoints))
+# open3d.visualization.draw([pcd])

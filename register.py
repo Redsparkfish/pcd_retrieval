@@ -67,7 +67,7 @@ def computeISS(points, t1=0.9, t2=0.9, radius=7 / 3):
         cluster_linda0 = np.asarray(cluster_linda0)
         NMS_OUTPUT = np.argmax(cluster_linda0)
         key_indices = np.append(key_indices, list(cluster)[NMS_OUTPUT])
-    key_indices=key_indices[1:]
+    key_indices = key_indices[1:]
 
     return key_indices, neighborSet, eigvectors
 
@@ -76,7 +76,7 @@ tic = time.time()
 
 query_pcd = poisson_sample(r'C:\Users\Admin\OneDrive\桌面\flange-coupling-2_step_1.stl')
 mr = meshResolution(query_pcd)
-target_pcd = poisson_sample(r'C:\Users\Admin\OneDrive\桌面\flange-coupling-2_step_1.stl', pymeshlab.AbsoluteValue(mr*0.94))
+target_pcd = poisson_sample(r'C:\Users\Admin\OneDrive\桌面\flange-coupling-2.stl', pymeshlab.AbsoluteValue(mr))
 
 print(query_pcd.shape, target_pcd.shape)
 
@@ -98,6 +98,6 @@ print(qry_DLFS.shape, tgt_DLFS.shape)
 
 distances = cdist(qry_DLFS, tgt_DLFS, metric='canberra')
 print(distances)
-np.save('distances1.npy', distances)
+np.save('distances.npy', distances)
 
 print(time.time()-tic)
