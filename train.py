@@ -10,10 +10,10 @@ data_dir = config['data_dir']
 mode = config['mode']
 update_dir = os.path.join(data_dir, 'update')
 
-key_indices_list, new_names, new_categories = computeDLFS(data_dir, mode)
+key_indices_list, train_names, train_categories = computeDLFS(data_dir, mode)
 
-size = new_names.shape[0]
-batch_num = 500
+size = train_names.shape[0]
+batch_size = 500
 num_clusters_batch = 50
 current_batch = 0
 if os.path.exists(os.path.join(data_dir, 'kmeans_list.npy')):
@@ -21,46 +21,52 @@ if os.path.exists(os.path.join(data_dir, 'kmeans_list.npy')):
     categories_list = np.load(os.path.join(data_dir, 'categories_list.npy'), allow_pickle=True).tolist()
     names_list = np.load(os.path.join(data_dir, 'names_list.npy'), allow_pickle=True).tolist()
     last_num = len(kmeans_list[-1].cluster_centers_)
-    if last_num < batch_num:
-        train_names = np.append(names_list[-1], new_names)
-        train_categories = np.append(categories_list[-1], new_categories)
+    if last_num < batch_size:
+        train_names = np.append(names_list[-1], train_names)
+        train_categories = np.append(categories_list[-1], train_categories)
         kmeans_list = kmeans_list[:-1]
         names_list = names_list[:-1]
         categories_list = categories_list[:-1]
+
 else:
     kmeans_list = []
     categories_list = []
     names_list = []
-    train_names = new_names
-    train_categories = new_categories
+    train_names = train_names
+    train_categories = train_categories
 
-while size >= batch_num:
+batch_num = 0
+while size >= batch_size:
+    batch_num += 1
     DLFS_set = []
     category_set = []
     name_set = []
-    for i in range(batch_num):
-        idx = batch_num * current_batch + i
+    for i in range(batch_size):
+        idx = batch_size * current_batch + i
         DLFS_set.append(np.load(os.path.join(data_dir, train_categories[idx], 'DCT', train_names[idx] + '.npy')))
         category_set.append(train_categories[idx])
         name_set.append(train_names[idx])
     bof = np.concatenate(DLFS_set)
+    print('Start Kmeans clustering.')
     kmeans = construct_codebook(bof, num_clusters=num_clusters_batch)
     kmeans_list.append(kmeans)
     categories_list.append(category_set)
     names_list.append(name_set)
-    size -= batch_num
+    size -= batch_size
     current_batch += 1
 
 if size != 0:
+    batch_num += 1
     DLFS_set = []
     category_set = []
     name_set = []
     for i in range(size):
-        idx = batch_num * current_batch + i
+        idx = batch_size * current_batch + i
         DLFS_set.append(np.load(os.path.join(data_dir, train_categories[idx], 'DCT', train_names[idx]+'.npy')))
         category_set.append(train_categories[idx])
         name_set.append(train_names[idx])
     bof = np.concatenate(DLFS_set)
+    print('Start Kmeans clustering.')
     kmeans = construct_codebook(bof, num_clusters=num_clusters_batch)
     kmeans_list.append(kmeans)
     categories_list.append(category_set)
@@ -76,7 +82,10 @@ np.save(os.path.join(data_dir, 'categories_list.npy'), categories_list)
 # categories_list = np.load(os.path.join(data_dir, 'categories_list.npy'), allow_pickle=True)
 # names_list = np.load(os.path.join(data_dir, 'names_list.npy'), allow_pickle=True)
 
-high_kmeans = construct_high_codebook(kmeans_list)
+if batch_num < 2:
+    high_kmeans = kmeans_list[0]
+else:
+    high_kmeans = construct_high_codebook(kmeans_list)
 np.save(os.path.join(data_dir, 'high_kmeans'), [high_kmeans])
 
 meta = computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list)
