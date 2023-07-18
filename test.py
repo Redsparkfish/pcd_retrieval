@@ -1,13 +1,14 @@
 import numpy as np
-import pygalmesh
+import json
 
-mesh = pygalmesh.remesh_surface(
-    "target.stl",
-    max_edge_size_at_feature_edges=0.5,
-    min_facet_angle=25,
-    max_radius_surface_delaunay_ball=0.5,
-    max_facet_distance=0.1,
-    verbose=False,
-)
 
-mesh.write('target_remeshed.stl')
+def numpy_to_json(numpy_array):
+    list_array = numpy_array.tolist()
+    return json.dumps(list_array)
+
+
+a = {'name': 'Jack'}
+b = np.ones(10)
+result_a = json.dumps(a.get('gender'))
+result_b = json.dumps(b)
+print(result_b)

@@ -42,9 +42,10 @@ def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
         d2, bof_desc = calcDescriptors(mesh, high_kmeans, kmeans_list)
 
     query_desc = np.hstack((d2, bof_desc))
+    par_descs = np.vstack([meta[i]['scale_par'] for i in range(len(meta))])
     d2_list = np.vstack([meta[i]['distribution'] for i in range(len(meta))])
     bof_descs = np.vstack([meta[i]['bof_desc'] for i in range(len(meta))])
-    fuse_descs = np.hstack((d2_list, bof_descs))
+    fuse_descs = np.hstack((par_descs, d2_list, bof_descs))
 
     dists = cdist(query_desc.reshape(1, query_desc.shape[0]), fuse_descs, metric='canberra')
     close_idx = np.argsort(dists[0])[:k + 1]
@@ -89,7 +90,6 @@ meta = np.load(os.path.join(data_dir, 'meta.npy'), allow_pickle=True)
 high_kmeans = np.load(os.path.join(data_dir, 'high_kmeans.npy'), allow_pickle=True)[0]
 kmeans_list = np.load(os.path.join(data_dir, 'kmeans_list.npy'), allow_pickle=True)
 results = retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k)
-print(results)
 results = json.dumps({"stlList": results}, ensure_ascii=False)
 results = eval(repr(results).replace('\\\\', '/'))
 results = eval(repr(results).replace('//', '/'))
