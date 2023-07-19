@@ -58,14 +58,14 @@ def count_shape(explorer: TopExp_Explorer):
 
 def get_par(shape: OCC.Core.TopoDS.TopoDS_Solid):
     par = np.zeros(17, dtype=float)
-    par_scale = np.zeros(17, dtype=float)
+    scale_par = np.zeros(17, dtype=float)
 
     obb = Bnd_OBB()
     brepbndlib_AddOBB(shape, obb)
     center = gp_Pnt(obb.Center())
     xyz = np.sort(np.array([obb.XHSize(), obb.YHSize(), obb.ZHSize()]))
     par[:3] = xyz/np.sum(xyz)
-    par_scale[:3] = xyz
+    scale_par[:3] = xyz
 
     ax3 = gp_Ax3(center, gp_Dir(obb.XDirection()), gp_Dir(obb.YDirection()))
     T = gp_Trsf()
@@ -91,8 +91,8 @@ def get_par(shape: OCC.Core.TopoDS.TopoDS_Solid):
         par[3:6] = Ixxyyzz / np.sum(Ixxyyzz)
     if np.sum(Ixyxzyz) != 0:
         par[6:9] = Ixyxzyz / np.sum(Ixyxzyz)
-    par_scale[3:6] = Ixxyyzz
-    par_scale[6:9] = Ixyxzyz
+    scale_par[3:6] = Ixxyyzz
+    scale_par[6:9] = Ixyxzyz
 
     face_exp = TopExp_Explorer(new_shape, TopAbs_FACE)
     edge_exp = TopExp_Explorer(new_shape, TopAbs_EDGE)
@@ -100,7 +100,7 @@ def get_par(shape: OCC.Core.TopoDS.TopoDS_Solid):
     wire_exp = TopExp_Explorer(new_shape, TopAbs_WIRE)
     N = np.array([count_shape(face_exp), count_shape(edge_exp), count_shape(vert_exp), count_shape(wire_exp)], dtype=float)
     par[9:13] = N / np.sum(N)
-    par_scale[9:13] = N / np.sum(N)
+    scale_par[9:13] = N / np.sum(N)
 
     vol = vol_prop.Mass()
     area = sur_prop.Mass()
@@ -115,8 +115,8 @@ def get_par(shape: OCC.Core.TopoDS.TopoDS_Solid):
 
     par[13] = vol / box_vol
     par[14] = area / box_area
-    par_scale[13] = vol
-    par_scale[14] = area
+    scale_par[13] = vol
+    scale_par[14] = area
 
     center_vertex = BRepBuilderAPI_MakeVertex(center).Shape()
     if face_exp.Value():
@@ -134,16 +134,16 @@ def get_par(shape: OCC.Core.TopoDS.TopoDS_Solid):
                 if face_exp.More():
                     par[16] = face_prop.Mass()
         face_exp.ReInit()
-        par_scale[15] = par[15]
-        par_scale[16] = par[16]
+        scale_par[15] = par[15]
+        scale_par[16] = par[16]
         par[15] /= xyz[0]
         par[16] /= area
         classifier = BRepClass3d_SolidClassifier(shape, center, 1e-6)
         if classifier.State() != TopAbs_IN:
             par[15] = -par[15]
-            par_scale[15] = -par_scale[15]
+            scale_par[15] = -scale_par[15]
 
-    return par, par_scale
+    return par, scale_par
 
 
 def calc_par(data_dir, meta):

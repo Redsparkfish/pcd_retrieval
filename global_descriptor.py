@@ -1,6 +1,7 @@
 from scipy.spatial.distance import cdist
 import numpy as np
 import os
+from stp_par import *
 
 
 def D2(points: np.ndarray, b_num=100):
@@ -64,9 +65,12 @@ def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list
             points = np.load(pcd_path)
             distribution = D2(points)
             DLFS = np.load(os.path.join(data_dir, category, 'DCT', name + '.npy'))
-            descriptor = sparseCoding(DLFS, high_kmeans, kmeans_list)
+            bof_desc = sparseCoding(DLFS, high_kmeans, kmeans_list)
+            stp_path = os.path.join(data_dir, category, 'STP', name+'.stp')
+            par, scale_par = get_par(read_step_file(stp_path))
 
-            info_dist = {'id': k, 'category': category, 'name': name, 'distribution': distribution, 'bof_desc': descriptor}
+            info_dist = {'id': k, 'category': category, 'name': name, 'distribution': distribution,
+                         'bof_desc': bof_desc, 'scale_par': scale_par}
             meta.append(info_dist)
             print(j, name)
             k += 1

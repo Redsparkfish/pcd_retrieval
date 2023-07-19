@@ -6,7 +6,7 @@ import os
 
 def numpy_to_json(numpy_array):
     if numpy_array is None:
-        return None
+        return json.dumps(np.zeros(17).tolist())
     list_array = numpy_array.tolist()
     return json.dumps(list_array)
 

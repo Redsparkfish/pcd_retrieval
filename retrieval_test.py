@@ -29,7 +29,7 @@ def calcDescriptors(mesh, high_kmeans, kmeans_list):
 
 def calcSimilarity(desc1: np.ndarray, desc2: np.ndarray):
     canberra_dist = scipy.spatial.distance.canberra(desc1, desc2)
-    return np.exp(-(canberra_dist*0.01)**3)
+    return np.square(np.exp(-(canberra_dist*0.016)**4))
 
 
 def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
@@ -37,11 +37,13 @@ def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
     if d:
         d2 = d['distribution']
         bof_desc = d['bof_desc']
+        scale_par = d['scale_par']
     else:
         mesh = trimesh.load_mesh(mesh_path)
         d2, bof_desc = calcDescriptors(mesh, high_kmeans, kmeans_list)
+        scale_par = np.zeros(17, dtype=float)
 
-    query_desc = np.hstack((d2, bof_desc))
+    query_desc = np.hstack((scale_par, d2, bof_desc))
     par_descs = np.vstack([meta[i]['scale_par'] for i in range(len(meta))])
     d2_list = np.vstack([meta[i]['distribution'] for i in range(len(meta))])
     bof_descs = np.vstack([meta[i]['bof_desc'] for i in range(len(meta))])
