@@ -167,6 +167,4 @@ def calc_par(data_dir, meta):
         d['par'] = par
         d['scale_par'] = scale_par
         print(d['name'])
-        print(par)
-        print(scale_par)
     return np.array(par_list), np.array(scale_par_list)

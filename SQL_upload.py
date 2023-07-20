@@ -22,11 +22,11 @@ cursor = db.cursor()
 size = meta.shape[0]
 i = 0
 for d in meta:
-    data = {'partType': d.get('category'),
-            'partName': d.get('name'),
-            'distributeDesc': numpy_to_json(d.get('distribution')),
-            'bofDesc': numpy_to_json(d.get('bof_desc')),
-            'parameterDesc': numpy_to_json(d.get('scale_par'))}
+    data = {'partType': d.get('partType'),
+            'partName': d.get('partName'),
+            'distributeDesc': d.get('d2_desc'),
+            'bofDesc': d.get('bof_desc'),
+            'parameterDesc': d.get('param_desc')}
     sql = "INSERT INTO `part_desc` (`partType`, `partName`, `distributeDesc`, `bofDesc`, `parameterDesc`) VALUES (%s, %s, %s, %s, %s) " \
           "AS new ON DUPLICATE KEY UPDATE " \
           "distributeDesc=new.distributeDesc, " \

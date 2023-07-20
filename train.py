@@ -1,3 +1,4 @@
+import time
 from DLFS_calculation import computeDLFS
 from bag_of_feature import *
 from global_descriptor import *
@@ -16,8 +17,9 @@ size = train_names.shape[0]
 batch_size = 500
 num_clusters_batch = 50
 current_batch = 0
-if os.path.exists(os.path.join(data_dir, 'kmeans_list.npy')):
+if os.path.exists(os.path.join(data_dir, 'kmeans_list.npy')) and mode.lower() == 'update':
     kmeans_list = np.load(os.path.join(data_dir, 'kmeans_list.npy'), allow_pickle=True).tolist()
+    print(kmeans_list)
     categories_list = np.load(os.path.join(data_dir, 'categories_list.npy'), allow_pickle=True).tolist()
     names_list = np.load(os.path.join(data_dir, 'names_list.npy'), allow_pickle=True).tolist()
     last_num = len(kmeans_list[-1].cluster_centers_)
@@ -36,6 +38,7 @@ else:
     train_categories = train_categories
 
 batch_num = 0
+tic0 = time.time()
 while size >= batch_size:
     batch_num += 1
     DLFS_set = []
@@ -77,7 +80,6 @@ categories_list = np.array(categories_list, dtype='object')
 np.save(os.path.join(data_dir, 'kmeans_list.npy'), kmeans_list)
 np.save(os.path.join(data_dir, 'names_list.npy'), names_list)
 np.save(os.path.join(data_dir, 'categories_list.npy'), categories_list)
-
 # kmeans_list = np.load(os.path.join(data_dir, 'kmeans.npy'), allow_pickle=True)
 # categories_list = np.load(os.path.join(data_dir, 'categories_list.npy'), allow_pickle=True)
 # names_list = np.load(os.path.join(data_dir, 'names_list.npy'), allow_pickle=True)
@@ -87,11 +89,10 @@ if batch_num < 2:
 else:
     high_kmeans = construct_high_codebook(kmeans_list)
 np.save(os.path.join(data_dir, 'high_kmeans'), [high_kmeans])
+print('Training finished in', (time.time() - tic0)/60, 'min. Initializing descriptor calculation.')
 
-meta = computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list)
-
-np.save(os.path.join(data_dir, 'meta.npy'), meta)
-
-
-
-
+tic1 = time.time()
+meta = json.dumps(computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list), indent=2, ensure_ascii=False)
+with open(os.path.join(data_dir, 'meta.json'), 'w') as outfile:
+    outfile.write(meta)
+print('Descriptor calculation finished in', (time.time() - tic1)/60, 'min. Total time:', (time.time() - tic0)/60, 'min.')

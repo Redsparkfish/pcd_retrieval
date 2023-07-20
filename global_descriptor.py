@@ -63,14 +63,14 @@ def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list
             category = categories_list[i][j]
             pcd_path = os.path.join(data_dir, category, 'PCD', name + '.npy')
             points = np.load(pcd_path)
-            distribution = D2(points)
+            d2_desc = D2(points)
             DLFS = np.load(os.path.join(data_dir, category, 'DCT', name + '.npy'))
             bof_desc = sparseCoding(DLFS, high_kmeans, kmeans_list)
             stp_path = os.path.join(data_dir, category, 'STP', name+'.stp')
             par, scale_par = get_par(read_step_file(stp_path))
 
-            info_dist = {'id': k, 'category': category, 'name': name, 'distribution': distribution,
-                         'bof_desc': bof_desc, 'scale_par': scale_par}
+            info_dist = {'id': k, 'partType': category, 'partName': name, 'd2_desc': d2_desc.tolist(),
+                         'bof_desc': bof_desc.tolist(), 'param_desc': scale_par.tolist()}
             meta.append(info_dist)
             print(j, name)
             k += 1

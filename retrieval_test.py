@@ -10,7 +10,7 @@ import os
 def isInMeta(mesh_path: str, meta):
     name = mesh_path.split('\\')[-1].split('.')[0]
     for d in meta:
-        if d['name'] == name:
+        if d['partName'] == name:
             return d
     return False
 
@@ -35,17 +35,17 @@ def calcSimilarity(desc1: np.ndarray, desc2: np.ndarray):
 def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
     d = isInMeta(mesh_path, meta)
     if d:
-        d2 = d['distribution']
+        d2 = d['d2_desc']
         bof_desc = d['bof_desc']
-        scale_par = d['scale_par']
+        scale_par = d['param_desc']
     else:
         mesh = trimesh.load_mesh(mesh_path)
         d2, bof_desc = calcDescriptors(mesh, high_kmeans, kmeans_list)
         scale_par = np.zeros(17, dtype=float)
 
     query_desc = np.hstack((scale_par, d2, bof_desc))
-    par_descs = np.vstack([meta[i]['scale_par'] for i in range(len(meta))])
-    d2_list = np.vstack([meta[i]['distribution'] for i in range(len(meta))])
+    par_descs = np.vstack([meta[i]['param_desc'] for i in range(len(meta))])
+    d2_list = np.vstack([meta[i]['d2_desc'] for i in range(len(meta))])
     bof_descs = np.vstack([meta[i]['bof_desc'] for i in range(len(meta))])
     fuse_descs = np.hstack((par_descs, d2_list, bof_descs))
 
@@ -55,8 +55,8 @@ def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
     similarities = [calcSimilarity(query_desc, desc) for desc in fuse_descs]
 
     results = [{"index": i, "similarity": similarities[close_idx[i]], "clientInfo": "",
-                "partType": meta[close_idx[i]]['category'], "name": meta[close_idx[i]]['name'],
-                "path": os.path.join(data_dir, meta[close_idx[i]]['category'], 'STL', meta[close_idx[i]]['name']+'.stl')}
+                "partType": meta[close_idx[i]]['partType'], "name": meta[close_idx[i]]['partName'],
+                "path": os.path.join(data_dir, meta[close_idx[i]]['partType'], 'STL', meta[close_idx[i]]['partName']+'.stl')}
                for i in range(k)]
 
     return results
@@ -76,9 +76,7 @@ def pr_curve(retrieval_results, category_name, category_total):
 
 
 mesh_path = sys.argv[1]
-category = sys.argv[2].lower()
-if category != 'all':
-    category = category[0].upper() + category[1:].lower()
+partType = sys.argv[2].lower()
 clientInfo = sys.argv[3].lower()
 k = int(sys.argv[4])
 
@@ -88,7 +86,12 @@ file = open(configPath, 'r')
 config = json.load(file)
 data_dir = config['data_dir']
 
-meta = np.load(os.path.join(data_dir, 'meta.npy'), allow_pickle=True)
+with open(os.path.join(data_dir, 'meta.json'), 'r') as metafile:
+    meta = json.load(metafile)
+
+# meta = np.load(os.path.join(data_dir, 'meta.npy'), allow_pickle=True)
+if partType.lower() != 'all':
+    meta = [d for d in meta if d['partType'] == partType]
 high_kmeans = np.load(os.path.join(data_dir, 'high_kmeans.npy'), allow_pickle=True)[0]
 kmeans_list = np.load(os.path.join(data_dir, 'kmeans_list.npy'), allow_pickle=True)
 results = retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k)
