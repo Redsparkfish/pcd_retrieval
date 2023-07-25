@@ -54,8 +54,8 @@ def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
 
     similarities = [calcSimilarity(query_desc, desc) for desc in fuse_descs]
 
-    results = [{"index": i, "similarity": similarities[close_idx[i]], "clientInfo": "",
-                "partType": meta[close_idx[i]]['partType'], "name": meta[close_idx[i]]['partName'],
+    results = [{"index": i, "similarity": str(similarities[close_idx[i]])[:4], "clientInfo": "",
+                "partType": meta[close_idx[i]]['partType'], "partName": meta[close_idx[i]]['partName'],
                 "path": os.path.join(data_dir, meta[close_idx[i]]['partType'], 'STL', meta[close_idx[i]]['partName']+'.stl')}
                for i in range(k)]
 

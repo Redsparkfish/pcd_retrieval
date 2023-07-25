@@ -66,12 +66,28 @@ def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list
             d2_desc = D2(points)
             DLFS = np.load(os.path.join(data_dir, category, 'DCT', name + '.npy'))
             bof_desc = sparseCoding(DLFS, high_kmeans, kmeans_list)
-            stp_path = os.path.join(data_dir, category, 'STP', name+'.stp')
-            par, scale_par = get_par(read_step_file(stp_path))
+
+            stp_path = ''
+            if os.path.exists(os.path.join(data_dir, category, 'STP', name + '.stp')):
+                stp_path = os.path.join(data_dir, category, 'STP', name + '.stp')
+            elif os.path.exists(os.path.join(data_dir, category, 'STEP', name + '.stp')):
+                stp_path = os.path.join(data_dir, category, 'STEP', name + '.stp')
+            elif os.path.exists(os.path.join(data_dir, category, 'STEP', name + '.step')):
+                stp_path = os.path.join(data_dir, category, 'STEP', name + '.step')
+            elif os.path.exists(os.path.join(data_dir, category, 'STP', name + '.step')):
+                stp_path = os.path.join(data_dir, category, 'STP', name + '.step')
+            else:
+                scale_par = np.zeros(17, dtype=float)
+            if os.path.exists(stp_path):
+                try:
+                    par, scale_par = get_par(read_step_file(stp_path))
+                except:
+                    print("failed, using zeros instead...")
+                    scale_par = np.zeros(17)
 
             info_dist = {'id': k, 'partType': category, 'partName': name, 'd2_desc': d2_desc.tolist(),
                          'bof_desc': bof_desc.tolist(), 'param_desc': scale_par.tolist()}
             meta.append(info_dist)
-            print(j, name)
+            print(k, name)
             k += 1
     return meta

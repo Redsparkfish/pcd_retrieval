@@ -14,8 +14,9 @@ def numpy_to_json(numpy_array):
 file = open('configuration.json', 'r')
 config = json.load(file)
 data_dir = config['data_dir']
-meta_path = os.path.join(data_dir, 'meta.npy')
-meta = np.load(meta_path, allow_pickle=True)
+meta_path = os.path.join(data_dir, 'meta.json')
+with open(meta_path, 'r') as metafile:
+    meta = json.load(metafile)
 
 db = pymysql.connect(host=config['db_host'], user=config['db_user'], password=config['db_password'], database=config['db_database'])
 cursor = db.cursor()
