@@ -29,7 +29,7 @@ def calcDescriptors(mesh, high_kmeans, kmeans_list):
 
 def calcSimilarity(desc1: np.ndarray, desc2: np.ndarray):
     canberra_dist = scipy.spatial.distance.canberra(desc1, desc2)
-    return np.square(np.exp(-(canberra_dist*0.016)**4))
+    return np.square(np.exp(-(canberra_dist*0.018)**4))
 
 
 def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
@@ -54,7 +54,7 @@ def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
 
     similarities = [calcSimilarity(query_desc, desc) for desc in fuse_descs]
 
-    results = [{"index": i, "similarity": str(similarities[close_idx[i]])[:4], "clientInfo": "",
+    results = [{"index": i, "similarity": str(similarities[close_idx[i]])[:6], "clientInfo": "",
                 "partType": meta[close_idx[i]]['partType'], "partName": meta[close_idx[i]]['partName'],
                 "path": os.path.join(data_dir, meta[close_idx[i]]['partType'], 'STL', meta[close_idx[i]]['partName']+'.stl')}
                for i in range(k)]
