@@ -29,7 +29,7 @@ def calcDescriptors(mesh, high_kmeans, kmeans_list):
 
 def calcSimilarity(desc1: np.ndarray, desc2: np.ndarray):
     canberra_dist = scipy.spatial.distance.canberra(desc1, desc2)
-    return np.square(np.exp(-(canberra_dist*0.018)**4))
+    return np.square(np.exp(-(canberra_dist*0.020)**4))
 
 
 def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
