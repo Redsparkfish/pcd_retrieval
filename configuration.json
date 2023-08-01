@@ -4,6 +4,6 @@
 	"db_user": "demo",
 	"db_password": "root1234!",
 	"db_database": "demo",
-	"mode": "!update"
+	"mode": "update"
 }
 	

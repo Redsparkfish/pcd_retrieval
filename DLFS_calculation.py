@@ -197,7 +197,7 @@ def computeDLFS(data_dir, mode='update'):
         if not os.path.isdir(os.path.join(data_dir, folder)):
             continue
         # Skip the update directory
-        if folder.lower() in ['update', 'temp_update']:
+        if folder.lower() in ['update', 'temp_update', 'delete']:
             continue
         category_tic = time.time()
         for filename in os.listdir(os.path.join(data_dir, folder, 'STL')):

@@ -52,15 +52,17 @@ def fisherVector(DLFS: np.ndarray, GMM_mean: np.ndarray, GMM_cov: np.ndarray, GM
     return u, v
 
 
-def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list):
-    num_clusters = high_kmeans.cluster_centers_.shape[0]
-    size = sum([len(names) for names in names_list])
+def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list, new_categories, new_names, last_id=0):
     meta = []
-    k = 0
+    k = last_id
     for i in range(len(names_list)):
         for j in range(len(names_list[i])):
             name = names_list[i][j]
             category = categories_list[i][j]
+            if name not in new_names:
+                continue
+            elif category not in new_categories[new_names == name]:
+                continue
             pcd_path = os.path.join(data_dir, category, 'PCD', name + '.npy')
             points = np.load(pcd_path)
             d2_desc = D2(points)
@@ -82,7 +84,7 @@ def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list
                 try:
                     par, scale_par = get_par(read_step_file(stp_path))
                 except:
-                    print("failed, using zeros instead...")
+                    print("STP parameters calculation failed, using zeros instead...")
                     scale_par = np.zeros(17)
 
             info_dist = {'id': k, 'partType': category, 'partName': name, 'd2_desc': d2_desc.tolist(),
