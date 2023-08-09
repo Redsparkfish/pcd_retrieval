@@ -188,6 +188,7 @@ def meshResolution(points):
 
 
 def computeDLFS(data_dir, mode='update'):
+    bug_file = open(os.path.join(data_dir, 'bug_log.txt'), 'a')
     new_names = []
     new_categories = []
     key_indices_list = []
@@ -208,11 +209,17 @@ def computeDLFS(data_dir, mode='update'):
                     new_names.append(filename[:-4])
                     new_categories.append(folder)
                 continue
+            try:
+                path = os.path.join(data_dir, folder, 'STL', filename)
+                mesh = trimesh.load(path, force='mesh')
+                points = trimesh.sample.sample_surface(mesh, 50000)[0]
+            except:
+                print(filename, 'sampling not successful.')
+                bug_file.write(filename + '\n')
+                continue
+
             new_names.append(filename[:-4])
             new_categories.append(folder)
-            path = os.path.join(data_dir, folder, 'STL', filename)
-            mesh = trimesh.load_mesh(path)
-            points = trimesh.sample.sample_surface(mesh, 50000)[0]
             points = np.unique(points, axis=0)
             if not os.path.exists(os.path.join(data_dir, folder, 'PCD')):
                 os.makedirs(os.path.join(data_dir, folder, 'PCD'))
@@ -233,6 +240,8 @@ def computeDLFS(data_dir, mode='update'):
                 os.makedirs(os.path.join(data_dir, folder, 'DCT'))
             np.save(os.path.join(data_dir, folder, 'DCT', filename[:-4] + '.npy'), DLFSs)
             key_indices_list.append(key_indices)
+
+    bug_file.close()
 
     print('Calculation finished in', (time.time() - tic) / 60, 'min.')
     return np.array(key_indices_list), np.array(new_names), np.array(new_categories)

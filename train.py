@@ -21,6 +21,40 @@ current_batch = 0
 meta_path = os.path.join(data_dir, 'meta.json')
 meta = None
 last_id = 0
+if mode.lower() == 'stp':
+    with open(meta_path, 'r+') as file:
+        meta = json.load(file)
+        file.close()
+    bug_file = open(os.path.join(data_dir, 'bug_log.txt'), 'a')
+    for d in meta:
+        category = d['partType']
+        name = d['partName']
+        try:
+            scale_par = param_desc(data_dir, category, name)
+        except:
+            bug_file.write(f'scale param for {name} failed.\n')
+            scale_par = np.zeros(17, dtype=float)
+        d['param_desc'] = scale_par
+    meta = json.dumps(meta, indent=2, ensure_ascii=False)
+    with open(os.path.join(data_dir, 'meta.json'), 'w') as outfile:
+        outfile.write(meta)
+        outfile.close()
+    bug_file.close()
+    exit()
+
+if mode.lower() == 'meta':
+    kmeans_list = np.load(os.path.join(data_dir, 'kmeans_list.npy'), allow_pickle=True).tolist()
+    categories_list = np.load(os.path.join(data_dir, 'categories_list.npy'), allow_pickle=True).tolist()
+    names_list = np.load(os.path.join(data_dir, 'names_list.npy'), allow_pickle=True).tolist()
+    high_kmeans = np.load(os.path.join(data_dir, 'high_kmeans.npy'), allow_pickle=True)[0]
+    meta = computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list, new_categories,
+                                        new_names, last_id)
+    meta = json.dumps(meta, indent=2, ensure_ascii=False)
+    with open(os.path.join(data_dir, 'meta.json'), 'w') as outfile:
+        outfile.write(meta)
+        outfile.close()
+    print('Descriptor calculation finished')
+
 if os.path.exists(meta_path) and mode.lower() == 'update':
     with open(meta_path, 'r+') as file:
         meta = json.load(file)
@@ -44,7 +78,6 @@ else:
     categories_list = []
     names_list = []
 init_list_len = len(kmeans_list)
-#
 
 tic0 = time.time()
 
@@ -93,13 +126,7 @@ np.save(os.path.join(data_dir, 'kmeans_list.npy'), kmeans_list)
 np.save(os.path.join(data_dir, 'names_list.npy'), names_list)
 np.save(os.path.join(data_dir, 'categories_list.npy'), categories_list)
 
-
-# kmeans_list = np.load(os.path.join(data_dir, 'kmeans_list.npy'), allow_pickle=True).tolist()
-# categories_list = np.load(os.path.join(data_dir, 'categories_list.npy'), allow_pickle=True).tolist()
-# names_list = np.load(os.path.join(data_dir, 'names_list.npy'), allow_pickle=True).tolist()
-# high_kmeans = np.load(os.path.join(data_dir, 'high_kmeans.npy'), allow_pickle=True)[0]
-
-if current_batch < 2:
+if len(kmeans_list) < 2:
     high_kmeans = kmeans_list[0]
 else:
     high_kmeans = construct_high_codebook(kmeans_list)
@@ -109,10 +136,16 @@ if os.path.exists(meta_path):
 np.save(os.path.join(data_dir, 'high_kmeans.npy'), [high_kmeans])
 print('Training finished in', (time.time() - tic0)/60, 'min. Initializing descriptor calculation.')
 
+# kmeans_list = np.load(os.path.join(data_dir, 'kmeans_list.npy'), allow_pickle=True).tolist()
+# categories_list = np.load(os.path.join(data_dir, 'categories_list.npy'), allow_pickle=True).tolist()
+# names_list = np.load(os.path.join(data_dir, 'names_list.npy'), allow_pickle=True).tolist()
+# high_kmeans = np.load(os.path.join(data_dir, 'high_kmeans.npy'), allow_pickle=True)[0]
+
 categories_list = categories_list[init_list_len:]
 names_list = names_list[init_list_len:]
 
 tic1 = time.time()
+meta = update_meta_bof(meta, data_dir, high_kmeans, kmeans_list)
 new_meta = computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list, new_categories, new_names, last_id)
 if meta:
     meta += new_meta

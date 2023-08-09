@@ -52,9 +52,31 @@ def fisherVector(DLFS: np.ndarray, GMM_mean: np.ndarray, GMM_cov: np.ndarray, GM
     return u, v
 
 
+def param_desc(data_dir, category, name):
+    stp_path = ''
+    if os.path.exists(os.path.join(data_dir, category, 'STP', name + '.stp')):
+        stp_path = os.path.join(data_dir, category, 'STP', name + '.stp')
+    elif os.path.exists(os.path.join(data_dir, category, 'STEP', name + '.stp')):
+        stp_path = os.path.join(data_dir, category, 'STEP', name + '.stp')
+    elif os.path.exists(os.path.join(data_dir, category, 'STEP', name + '.step')):
+        stp_path = os.path.join(data_dir, category, 'STEP', name + '.step')
+    elif os.path.exists(os.path.join(data_dir, category, 'STP', name + '.step')):
+        stp_path = os.path.join(data_dir, category, 'STP', name + '.step')
+    else:
+        scale_par = np.zeros(17, dtype=float)
+    if os.path.exists(stp_path):
+        try:
+            par, scale_par = get_par(read_step_file(stp_path))
+        except:
+            raise Exception("STP parameters calculation failed, using zeros instead...")
+
+    return scale_par
+
+
 def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list, new_categories, new_names, last_id=0):
     meta = []
     k = last_id
+    bug_file = open(os.path.join(data_dir, 'bug_log.txt'), 'a')
     for i in range(len(names_list)):
         for j in range(len(names_list[i])):
             name = names_list[i][j]
@@ -68,28 +90,25 @@ def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list
             d2_desc = D2(points)
             DLFS = np.load(os.path.join(data_dir, category, 'DCT', name + '.npy'))
             bof_desc = sparseCoding(DLFS, high_kmeans, kmeans_list)
-
-            stp_path = ''
-            if os.path.exists(os.path.join(data_dir, category, 'STP', name + '.stp')):
-                stp_path = os.path.join(data_dir, category, 'STP', name + '.stp')
-            elif os.path.exists(os.path.join(data_dir, category, 'STEP', name + '.stp')):
-                stp_path = os.path.join(data_dir, category, 'STEP', name + '.stp')
-            elif os.path.exists(os.path.join(data_dir, category, 'STEP', name + '.step')):
-                stp_path = os.path.join(data_dir, category, 'STEP', name + '.step')
-            elif os.path.exists(os.path.join(data_dir, category, 'STP', name + '.step')):
-                stp_path = os.path.join(data_dir, category, 'STP', name + '.step')
-            else:
+            try:
+                scale_par = param_desc(data_dir, category, name)
+            except:
+                bug_file.write(f'scale param for {name} failed.\n')
                 scale_par = np.zeros(17, dtype=float)
-            if os.path.exists(stp_path):
-                try:
-                    par, scale_par = get_par(read_step_file(stp_path))
-                except:
-                    print("STP parameters calculation failed, using zeros instead...")
-                    scale_par = np.zeros(17)
 
             info_dist = {'id': k, 'partType': category, 'partName': name, 'd2_desc': d2_desc.tolist(),
                          'bof_desc': bof_desc.tolist(), 'param_desc': scale_par.tolist()}
             meta.append(info_dist)
             print(k, name)
             k += 1
+    bug_file.close()
+    return meta
+
+
+def update_meta_bof(meta, data_dir, high_kmeans, kmeans_list):
+    for d in meta:
+        DLFS = np.load(os.path.join(data_dir, d['partType'], 'DCT', d['partName'] + '.npy'))
+        bof_desc = sparseCoding(DLFS, high_kmeans, kmeans_list).tolist()
+        d['bof_desc'] = bof_desc
+        print(f"bof_desc of {d['partName']} updated")
     return meta

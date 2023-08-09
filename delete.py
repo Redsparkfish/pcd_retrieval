@@ -63,6 +63,11 @@ for partType in os.listdir(delete_path):
     for partName in os.listdir(os.path.join(delete_path, partType, 'STL')):
         os.remove(os.path.join(delete_path, partType, 'STL', partName))
 
+id = 0
+for d in meta:
+    d['id'] = id
+    id += 1
+
 names_list = np.array(names_list, dtype='object')
 categories_list = np.array(categories_list, dtype='object')
 os.chmod(os.path.join(data_dir, 'names_list.npy'), stat.S_IWRITE)
