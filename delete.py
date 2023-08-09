@@ -43,7 +43,6 @@ for partType in os.listdir(delete_path):
         while i < len(meta):
             if meta[i].get('partName') == file_name and meta[i].get('partType') == partType:
                 meta.pop(i)
-                print(len(meta))
             else:
                 i += 1
         i = 0
@@ -51,10 +50,10 @@ for partType in os.listdir(delete_path):
             j = 0
             while j < len(names_list[i]):
                 if names_list[i][j] == file_name and categories_list[i][j] == partType:
+                    name = names_list[i][j]
                     names_list[i].pop(j)
                     categories_list[i].pop(j)
-                    print(len(names_list[i]))
-                    print(len(categories_list[i]))
+                    print(name, 'removed')
                 else:
                     j += 1
             i += 1
