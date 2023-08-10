@@ -189,45 +189,44 @@ def meshResolution(points):
 
 def computeDLFS(data_dir, mode='update'):
     bug_file = open(os.path.join(data_dir, 'bug_log.txt'), 'a')
-    new_names = []
-    new_categories = []
+    partNames = []
+    partTypes = []
     key_indices_list = []
     tic = time.time()
-    for folder in os.listdir(data_dir):
+    for partType in os.listdir(data_dir):
         # Skip any files in the data directory
-        if not os.path.isdir(os.path.join(data_dir, folder)):
+        if not os.path.isdir(os.path.join(data_dir, partType)):
             continue
         # Skip the update directory
-        if folder.lower() in ['update', 'temp_update', 'delete']:
+        if partType.lower() in ['update', 'temp_update', 'delete']:
             continue
         category_tic = time.time()
-        for filename in os.listdir(os.path.join(data_dir, folder, 'STL')):
-            if not filename.endswith('.stl'):
+        for partName in os.listdir(os.path.join(data_dir, partType, 'STL')):
+            if not partName.endswith('.stl'):
                 continue
-            if os.path.exists(os.path.join(data_dir, folder, 'DCT', filename[:-4]+'.npy')):
-                if mode.lower() != 'update':
-                    new_names.append(filename[:-4])
-                    new_categories.append(folder)
+            if os.path.exists(os.path.join(data_dir, partType, 'DCT', partName[:-4]+'.npy')):
+                partNames.append(partName[:-4])
+                partTypes.append(partType)
                 continue
             try:
-                path = os.path.join(data_dir, folder, 'STL', filename)
+                path = os.path.join(data_dir, partType, 'STL', partName)
                 mesh = trimesh.load(path, force='mesh')
                 points = trimesh.sample.sample_surface(mesh, 50000)[0]
             except:
-                print(filename, 'sampling not successful.')
-                bug_file.write(filename + '\n')
+                print(partName, 'sampling not successful.')
+                bug_file.write(partName + '\n')
                 continue
 
-            new_names.append(filename[:-4])
-            new_categories.append(folder)
+            partNames.append(partName[:-4])
+            partTypes.append(partType)
             points = np.unique(points, axis=0)
-            if not os.path.exists(os.path.join(data_dir, folder, 'PCD')):
-                os.makedirs(os.path.join(data_dir, folder, 'PCD'))
-            np.save(os.path.join(data_dir, folder, 'PCD', filename[:-4]+'.npy'), points)
+            if not os.path.exists(os.path.join(data_dir, partType, 'PCD')):
+                os.makedirs(os.path.join(data_dir, partType, 'PCD'))
+            np.save(os.path.join(data_dir, partType, 'PCD', partName[:-4]+'.npy'), points)
             mr = meshResolution(points)
 
             # Extract ISS keypoints
-            print(filename)
+            print(partName)
             key_indices, neighbor_indices, eigvectors = computeISS(points, rate=1, radius=2.5 * mr)
 
             # Extract DLFS features from the mesh
@@ -236,15 +235,15 @@ def computeDLFS(data_dir, mode='update'):
             DLFSs = DLFSs.reshape(DLFSs.shape[0], DLFSs.shape[1]*DLFSs.shape[2])
             # Append the features to the list
 
-            if not os.path.exists(os.path.join(data_dir, folder, 'DCT')):
-                os.makedirs(os.path.join(data_dir, folder, 'DCT'))
-            np.save(os.path.join(data_dir, folder, 'DCT', filename[:-4] + '.npy'), DLFSs)
+            if not os.path.exists(os.path.join(data_dir, partType, 'DCT')):
+                os.makedirs(os.path.join(data_dir, partType, 'DCT'))
+            np.save(os.path.join(data_dir, partType, 'DCT', partName[:-4] + '.npy'), DLFSs)
             key_indices_list.append(key_indices)
 
     bug_file.close()
 
-    print('Calculation finished in', (time.time() - tic) / 60, 'min.')
-    return np.array(key_indices_list), np.array(new_names), np.array(new_categories)
+    print('DLFS calculation finished in', (time.time() - tic) / 60, 'min.')
+    return np.array(key_indices_list), np.array(partNames), np.array(partTypes)
 
 
 # computeDLFS(r'C:\Users\Admin\模型分类_mesh')

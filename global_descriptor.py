@@ -73,34 +73,24 @@ def param_desc(data_dir, category, name):
     return scale_par
 
 
-def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, categories_list, names_list, new_categories, new_names, last_id=0):
+def computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, partTypes, partNames, last_id=0):
     meta = []
     k = last_id
     bug_file = open(os.path.join(data_dir, 'bug_log.txt'), 'a')
-    for i in range(len(names_list)):
-        for j in range(len(names_list[i])):
-            name = names_list[i][j]
-            category = categories_list[i][j]
-            if name not in new_names:
-                continue
-            elif category not in new_categories[new_names == name]:
-                continue
-            pcd_path = os.path.join(data_dir, category, 'PCD', name + '.npy')
-            points = np.load(pcd_path)
-            d2_desc = D2(points)
-            DLFS = np.load(os.path.join(data_dir, category, 'DCT', name + '.npy'))
-            bof_desc = sparseCoding(DLFS, high_kmeans, kmeans_list)
-            try:
-                scale_par = param_desc(data_dir, category, name)
-            except:
-                bug_file.write(f'scale param for {name} failed.\n')
-                scale_par = np.zeros(17, dtype=float)
+    for i in range(len(partNames)):
+        name = partNames[i]
+        category = partTypes[i]
+        pcd_path = os.path.join(data_dir, category, 'PCD', name + '.npy')
+        points = np.load(pcd_path)
+        d2_desc = D2(points)
+        DLFS = np.load(os.path.join(data_dir, category, 'DCT', name + '.npy'))
+        bof_desc = sparseCoding(DLFS, high_kmeans, kmeans_list)
 
-            info_dist = {'id': k, 'partType': category, 'partName': name, 'd2_desc': d2_desc.tolist(),
-                         'bof_desc': bof_desc.tolist(), 'param_desc': scale_par.tolist()}
-            meta.append(info_dist)
-            print(k, name)
-            k += 1
+        info_dist = {'id': k, 'partType': category, 'partName': name, 'd2_desc': d2_desc.tolist(),
+                     'bof_desc': bof_desc.tolist(), 'param_desc': np.zeros(17).tolist()}
+        meta.append(info_dist)
+        print(k, name)
+        k += 1
     bug_file.close()
     return meta
 

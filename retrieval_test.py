@@ -50,6 +50,7 @@ def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
         scale_par = np.zeros(17, dtype=float)
 
     query_desc = np.hstack((scale_par, d2, bof_desc))
+
     par_descs = np.vstack([meta[i]['param_desc'] for i in range(len(meta))])
     d2_list = np.vstack([meta[i]['d2_desc'] for i in range(len(meta))])
     bof_descs = np.vstack([meta[i]['bof_desc'] for i in range(len(meta))])
