@@ -3,5 +3,9 @@ import os
 import numpy as np
 import shutil
 
-a = np.zeros(10)
-print(np.append(a, []))
+with open('meta.json', 'r') as file:
+    meta = json.load(file)
+    print(meta)
+    file.close()
+
+print('aaa'.startswith())

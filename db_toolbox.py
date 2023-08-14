@@ -1,12 +1,10 @@
+import os.path
 import time
-
-import numpy as np
-
+import sys
 from DLFS_calculation import computeDLFS
 from bag_of_feature import *
 from global_descriptor import *
 import json
-import stat
 import shutil
 
 
@@ -70,12 +68,20 @@ file = open('configuration.json', 'r', encoding='utf-8')
 config = json.load(file)
 data_dir = config['data_dir']
 mode = config['mode']
+
+feasible_modes = ['start', 'start stp', 'update', '!update', '!update stp', 'update stp', 'temp_update', 'temp_update stp', 'stp', 'delete']
+if mode not in feasible_modes:
+    raise Exception(f'mode value error. Possible modes: {feasible_modes}')
 meta_path = os.path.join(data_dir, 'meta.json')
 residuals_path = os.path.join(data_dir, 'residuals.json')
 meta = None
 last_id = 0
+batch_size = 500
+num_clusters_batch = 50
 tic0 = time.time()
-if mode.lower() == 'temp_update':
+
+
+def temp_update():
     if not os.path.exists(meta_path):
         raise Exception("'meta.json does not exist.")
     meta = open_json(meta_path, mode='r')
@@ -85,9 +91,9 @@ if mode.lower() == 'temp_update':
 
     update_dir = os.path.join(data_dir, 'temp_update')
     key_indices_list, new_partNames, new_partTypes = computeDLFS(update_dir, mode)
-
     new_meta = computeGlobalDescriptors(update_dir, high_kmeans, kmeans_list, new_partTypes, new_partNames, last_id)
     meta += new_meta
+    meta = rm_dup(meta)
     meta = json.dumps(meta, indent=2, ensure_ascii=False)
     with open(os.path.join(data_dir, 'meta.json'), 'w') as outfile:
         outfile.write(meta)
@@ -95,20 +101,59 @@ if mode.lower() == 'temp_update':
 
     for partType in np.unique(new_partTypes):
         src = os.path.join(update_dir, partType)
-        dest = os.path.join(data_dir, 'update', partType)
-        shutil.copytree(src, dest, dirs_exist_ok=True)
+        dest1 = os.path.join(data_dir, 'update', partType)
+        dest2 = os.path.join(data_dir, partType)
+        shutil.copytree(src, dest1, dirs_exist_ok=True)
+        shutil.copytree(src, dest2, dirs_exist_ok=True)
         shutil.rmtree(src)
         os.mkdir(src)
         os.mkdir(src + '/STL')
         os.mkdir(src + '/STP')
-    exit()
 
-elif mode.lower() == 'update':
+
+def stp():
+    meta = open_json(meta_path)
+    bug_file = open(os.path.join(data_dir, 'bug_log.txt'), 'a')
+    tic = time.time()
+    for d in meta:
+        category = d['partType']
+        name = d['partName']
+        if d.get('param_desc') and d['param_desc'] != np.zeros(17).tolist():
+            print(name, 'param_desc exists.')
+            continue
+        try:
+            scale_par = param_desc(data_dir, category, name)
+        except:
+            bug_file.write(f'scale param for {name} failed.\n')
+            scale_par = np.zeros(17, dtype=float).tolist()
+        print(name, 'param_desc calculated.')
+        d['param_desc'] = scale_par.tolist()
+    meta = json.dumps(meta, indent=2, ensure_ascii=False)
+    with open(os.path.join(data_dir, 'meta.json'), 'w') as outfile:
+        outfile.write(meta)
+        outfile.close()
+    bug_file.close()
+    print('param_descs calculation finished in', (time.time()-tic)/60, 'min.')
+
+
+def update():
     if not os.path.exists(meta_path):
         raise Exception("'meta.json does not exist.")
     meta = open_json(meta_path, 'r')
     kmeans_list = np.load(os.path.join(data_dir, 'kmeans_list.npy'), allow_pickle=True).tolist()
-    residuals = open_json(residuals_path)
+    if os.path.exists(residuals_path):
+        residuals = open_json(residuals_path)
+    else:
+        partTypes = [d['partType'] for d in meta]
+        partNames = [d['partName'] for d in meta]
+        while len(partTypes) >= batch_size:
+            partTypes = partTypes[batch_size:]
+            partNames = partNames[batch_size:]
+        residuals = []
+        for i in range(len(partTypes)):
+            residuals.append({'partType': partTypes[i],
+                              'partName': partNames[i]})
+
     residual_partTypes = [d['partType'] for d in residuals]
     residual_partNames = [d['partName'] for d in residuals]
 
@@ -119,8 +164,6 @@ elif mode.lower() == 'update':
     train_partNames = np.append(residual_partNames, new_partNames)
     train_partTypes = np.append(residual_partTypes, new_partTypes)
 
-    batch_size = 500
-    num_clusters_batch = 50
     last_id = meta[-1].get('id') + 1
 
     for partType in np.unique(new_partTypes):
@@ -135,7 +178,8 @@ elif mode.lower() == 'update':
     new_kmeans_list = get_kmeans_list(data_dir, train_partTypes, train_partNames, batch_size, num_clusters_batch)
     kmeans_list += new_kmeans_list
 
-elif mode.lower() == 'delete':
+
+def delete():
     meta_path = os.path.join(data_dir, 'meta.json')
     delete_path = os.path.join(data_dir, 'delete')
     if not os.path.exists(meta_path):
@@ -145,11 +189,14 @@ elif mode.lower() == 'delete':
             meta = json.load(file)
             file.close()
 
-    partNames_list = np.load(os.path.join(data_dir, 'names_list.npy'), allow_pickle=True).tolist()
-    partTypes_list = np.load(os.path.join(data_dir, 'categories_list.npy'), allow_pickle=True).tolist()
+    residuals = open_json(residuals_path)
 
     for partType in os.listdir(delete_path):
+        if not os.path.isdir(os.path.join(delete_path, partType)):
+            continue
         for partName in os.listdir(os.path.join(delete_path, partType, 'STL')):
+            if not partName.lower().endswith('.stl'):
+                continue
             file_name = partName[:-4]
             if os.path.exists(os.path.join(data_dir, partType, 'STL', file_name + '.stl')):
                 os.remove(os.path.join(data_dir, partType, 'STL', file_name + '.stl'))
@@ -172,17 +219,12 @@ elif mode.lower() == 'delete':
                 else:
                     i += 1
             i = 0
-            while i < len(partNames_list):
-                j = 0
-                while j < len(partNames_list[i]):
-                    if partNames_list[i][j] == file_name and partTypes_list[i][j] == partType:
-                        name = partNames_list[i][j]
-                        partNames_list[i].pop(j)
-                        partTypes_list[i].pop(j)
-                        print(name, 'removed')
-                    else:
-                        j += 1
-                i += 1
+            while i < len(residuals):
+                if residuals[i]['partName'] == file_name and residuals[i]['partType'] == partType:
+                    residuals.pop(i)
+                    print(file_name, 'removed')
+                else:
+                    i += 1
 
     for partType in os.listdir(delete_path):
         for partName in os.listdir(os.path.join(delete_path, partType, 'STL')):
@@ -193,44 +235,35 @@ elif mode.lower() == 'delete':
         d['id'] = id
         id += 1
 
-    partNames_list = np.array(partNames_list, dtype='object')
-    partTypes_list = np.array(partTypes_list, dtype='object')
-    os.chmod(os.path.join(data_dir, 'names_list.npy'), stat.S_IWRITE)
-    os.chmod(os.path.join(data_dir, 'categories_list.npy'), stat.S_IWRITE)
-    os.chmod(meta_path, stat.S_IWRITE)
-    np.save(os.path.join(data_dir, 'names_list.npy'), partNames_list)
-    np.save(os.path.join(data_dir, 'categories_list.npy'), partTypes_list)
-    meta = json.dumps(meta)
+    meta = json.dumps(meta, indent=2, ensure_ascii=False)
+    residuals = json.dumps(residuals, indent=2, ensure_ascii=False)
     with open(meta_path, 'w') as outfile:
         outfile.write(meta)
         outfile.close()
-    exit()
+    with open(residuals_path, 'w') as outfile:
+        outfile.write(residuals)
+        outfile.close()
+
+
+if mode.lower() == 'temp_update':
+    temp_update()
+    sys.exit()
+
+if mode.lower() == "temp_update stp":
+    temp_update()
+    stp()
+    sys.exit()
+
+elif mode.lower() == 'update':
+    update()
+
+elif mode.lower() == 'delete':
+    delete()
+    sys.exit()
 
 elif mode.lower() == 'stp':
-    with open(meta_path, 'r+') as file:
-        meta = json.load(file)
-        file.close()
-    bug_file = open(os.path.join(data_dir, 'bug_log.txt'), 'a')
-    tic = time.time()
-    for d in meta:
-        category = d['partType']
-        name = d['partName']
-        if d.get('param_desc') and d['param_desc'] != np.zeros(17).tolist():
-            continue
-        try:
-            scale_par = param_desc(data_dir, category, name)
-        except:
-            bug_file.write(f'scale param for {name} failed.\n')
-            scale_par = np.zeros(17, dtype=float).tolist()
-        print(name)
-        d['param_desc'] = scale_par.tolist()
-    meta = json.dumps(meta, indent=2, ensure_ascii=False)
-    with open(os.path.join(data_dir, 'meta.json'), 'w') as outfile:
-        outfile.write(meta)
-        outfile.close()
-    bug_file.close()
-    print('param_descs calculation finished in', (time.time()-tic)/60, 'min.')
-    exit()
+    stp()
+    sys.exit()
 
 else:
     key_indices_list, new_partNames, new_partTypes = computeDLFS(data_dir, mode)
@@ -264,7 +297,7 @@ np.save(os.path.join(data_dir, 'high_kmeans.npy'), [high_kmeans])
 print('Training finished in', (time.time() - tic0)/60, 'min. Initializing descriptor calculation.')
 
 tic1 = time.time()
-if mode.lower() == 'update':
+if mode.lower().startswith('update'):
     meta = update_meta_bof(meta, data_dir, high_kmeans, kmeans_list)
 new_meta = computeGlobalDescriptors(data_dir, high_kmeans, kmeans_list, new_partTypes, new_partNames, last_id)
 if meta:
@@ -278,4 +311,7 @@ with open(os.path.join(data_dir, 'meta.json'), 'w') as outfile:
     outfile.write(meta)
     outfile.close()
 
-print('Descriptor calculation finished in', (time.time() - tic1)/60, 'min.\n Total time consumed:', (time.time() - tic0)/60, 'min.')
+print('BOF descriptor calculation finished in', (time.time() - tic1)/60, 'min.\n Total time consumed:', (time.time() - tic0)/60, 'min.')
+
+if mode.endswith('stp'):
+    stp()

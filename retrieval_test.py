@@ -96,6 +96,7 @@ if __name__ == '__main__':
 
     with open(os.path.join(data_dir, 'meta.json'), 'r') as metafile:
         meta = json.load(metafile)
+        metafile.close()
 
     # meta = np.load(os.path.join(data_dir, 'meta.npy'), allow_pickle=True)
     if partType.lower() != 'all':
