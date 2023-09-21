@@ -4,7 +4,9 @@ from DLFS_calculation import *
 from global_descriptor import D2, sparseCoding
 import json
 import sys
+import argparse
 import os
+import time
 
 
 def isInMeta(mesh_path: str, meta):
@@ -16,26 +18,48 @@ def isInMeta(mesh_path: str, meta):
 
 
 def calcDescriptors(mesh, high_kmeans, kmeans_list):
+
     points = trimesh.sample.sample_surface(mesh, 30000)[0]
     mr = meshResolution(points) / 1.25
+    tic00 = time.time()
     key_indices, neighbor_indices, eigvectors = computeISS(points, rate=1, radius=2.5 * mr)
+    tic01 = time.time()
     LMA = getLMA(points, eigvectors, radius=7 * mr)
     DLFSs = getDLFS(points, LMA, key_indices, R=20 * mr)
+    tic02 = time.time()
     DLFSs = DLFSs.reshape(DLFSs.shape[0], DLFSs.shape[1]*DLFSs.shape[2])
     distribution = D2(points)
     bof_descriptor = sparseCoding(DLFSs, high_kmeans, kmeans_list)
+    tic03 = time.time()
+
+    print('ISS time:', tic01-tic00)
+    print('DLFS time:', tic02-tic01)
+    print('BOF time:', tic03-tic02)
     return distribution, bof_descriptor
 
 
 def calcSimilarity(desc1: np.ndarray, desc2: np.ndarray):
-    canberra_dist = scipy.spatial.distance.canberra(desc1, desc2)
-    return np.square(np.exp(-(canberra_dist*0.020)**4))
+    dist = custom_dist(desc1, desc2)
+    sim = np.exp(-(0.2*dist**4))
+    if sim > 1:
+        sim = 0
+    return sim
 
 
-def retrieval(query_desc, batch_descs, k=10):
-    dists = cdist(query_desc.reshape(1, query_desc.shape[0]), batch_descs, metric='canberra')
-    close_idx = np.argsort(dists[0])[:k + 1]
-    return close_idx
+def custom_dist(p1, p2):
+    p1_scale_par = p1[:17]
+    p1_bof_desc = p1[17:-100]
+    p1_d2 = p1[-100:]
+
+    p2_scale_par = p2[:17]
+    p2_bof_desc = p2[17:-100]
+    p2_d2 = p2[-100:]
+
+    distance = 0
+    distance += 0.1*scipy.spatial.distance.canberra(p1_scale_par, p2_scale_par)
+    distance += scipy.spatial.distance.cityblock(p1_bof_desc, p2_bof_desc)
+    distance += scipy.spatial.distance.cityblock(p1_d2, p2_d2)
+    return distance
 
 
 def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
@@ -51,13 +75,8 @@ def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
 
     query_desc = np.hstack((scale_par, d2, bof_desc))
 
-    par_descs = np.vstack([meta[i]['param_desc'] for i in range(len(meta))])
-    d2_list = np.vstack([meta[i]['d2_desc'] for i in range(len(meta))])
-    bof_descs = np.vstack([meta[i]['bof_desc'] for i in range(len(meta))])
-    fuse_descs = np.hstack((par_descs, d2_list, bof_descs))
-
-    dists = cdist(query_desc.reshape(1, query_desc.shape[0]), fuse_descs, metric='canberra')
-    close_idx = np.argsort(dists[0])[:k + 1]
+    dists = cdist(query_desc.reshape(1, query_desc.shape[0]), fuse_descs, metric=custom_dist)
+    close_idx = np.argsort(dists[0])
 
     similarities = [calcSimilarity(query_desc, desc) for desc in fuse_descs]
 
@@ -83,12 +102,23 @@ def pr_curve(retrieval_results, category_name, category_total):
 
 
 if __name__ == '__main__':
-    mesh_path = sys.argv[1]
-    partType = sys.argv[2].lower()
-    clientInfo = sys.argv[3].lower()
-    k = int(sys.argv[4])
+    tic = time.time()
 
-    configPath = sys.argv[5]
+    parser = argparse.ArgumentParser(description="Retrieval Arguments")
+    parser.add_argument('--meshPath', '-mp', type=str,
+                        default=r"C:\Users\Admin\Bearings_00ed2536-3d80-4f07-8851-4f49f1606498",
+                        help="the path of the stl file")
+    parser.add_argument('--partType', '-ptt', type=str, default='all', help="part type attribute")
+    parser.add_argument('--clientInfo', '-ci', type=str, default='all', help="client info attribute")
+    parser.add_argument('--retrievalNum', '-k', type=int, default=10, help='desired number of retrieval results')
+    parser.add_argument('--configPath', '-cp', type=str, default='configuration.json', help='the path of the configuration file')
+
+    args = parser.parse_args()
+    mesh_path = args.meshPath
+    partType = args.partType
+    clientInfo = args.clientInfo
+    k = args.retrievalNum
+    configPath = args.configPath
 
     file = open(configPath, 'r')
     config = json.load(file)
@@ -103,8 +133,19 @@ if __name__ == '__main__':
         meta = [d for d in meta if d['partType'] == partType]
     high_kmeans = np.load(os.path.join(data_dir, 'high_kmeans.npy'), allow_pickle=True)[0]
     kmeans_list = np.load(os.path.join(data_dir, 'kmeans_list.npy'), allow_pickle=True)
+
+    par_descs = np.vstack([meta[i]['param_desc'] for i in range(len(meta))])
+    d2_list = np.vstack([meta[i]['d2_desc'] for i in range(len(meta))])
+    bof_descs = np.vstack([meta[i]['bof_desc'] for i in range(len(meta))])
+    fuse_descs = np.hstack((par_descs, d2_list, bof_descs))
+
+    tic1 = time.time()
+
     results = retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k)
-    results = json.dumps({"stlList": results}, ensure_ascii=False)
+    results = json.dumps({"stlList": results}, indent=2, ensure_ascii=False)
     results = eval(repr(results).replace('\\\\', '/'))
     results = eval(repr(results).replace('//', '/'))
     print(results)
+
+    print("reading time:", tic1-tic)
+    print("retrieving time:", time.time()-tic1)

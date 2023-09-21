@@ -1,7 +1,7 @@
 import numpy as np
 import json
 import os
-from retrieval_test import retrieval
+from retrieval_test import retrieve_test
 
 with open('configuration.json', 'r') as file:
     config = json.load(file)
@@ -22,7 +22,7 @@ for query in meta:
     query_type = query['partType']
     query_desc = np.array(query['desc'])
 
-    results_idx = retrieval(query_desc, batch_descs, k)
+    results_idx = retrieve_test(query_desc, batch_descs, k)
     for i in results_idx[1:]:
         if meta[i]['partType'] == query_type:
             summary += 1

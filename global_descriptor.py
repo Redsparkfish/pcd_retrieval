@@ -1,6 +1,4 @@
 from scipy.spatial.distance import cdist
-import numpy as np
-import os
 from stp_par import *
 
 
@@ -52,9 +50,11 @@ def fisherVector(DLFS: np.ndarray, GMM_mean: np.ndarray, GMM_cov: np.ndarray, GM
     return u, v
 
 
-def param_desc(data_dir, category, name):
+def param_desc(data_dir, category, name, path=None):
     stp_path = ''
-    if os.path.exists(os.path.join(data_dir, category, 'STP', name + '.stp')):
+    if path:
+        stp_path = path
+    elif os.path.exists(os.path.join(data_dir, category, 'STP', name + '.stp')):
         stp_path = os.path.join(data_dir, category, 'STP', name + '.stp')
     elif os.path.exists(os.path.join(data_dir, category, 'STEP', name + '.stp')):
         stp_path = os.path.join(data_dir, category, 'STEP', name + '.stp')

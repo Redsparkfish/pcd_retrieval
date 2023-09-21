@@ -177,6 +177,7 @@ def update():
 
     new_kmeans_list = get_kmeans_list(data_dir, train_partTypes, train_partNames, batch_size, num_clusters_batch)
     kmeans_list += new_kmeans_list
+    return meta, kmeans_list, train_partTypes, train_partNames, new_partTypes, new_partNames
 
 
 def delete():
@@ -249,13 +250,13 @@ if mode.lower() == 'temp_update':
     temp_update()
     sys.exit()
 
-if mode.lower() == "temp_update stp":
+elif mode.lower() == "temp_update stp":
     temp_update()
     stp()
     sys.exit()
 
-elif mode.lower() == 'update':
-    update()
+elif mode.lower().startswith('update'):
+    meta, kmeans_list, train_partTypes, train_partNames, new_partTypes, new_partNames = update()
 
 elif mode.lower() == 'delete':
     delete()

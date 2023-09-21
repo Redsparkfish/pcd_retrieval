@@ -27,6 +27,30 @@ def getNeighbors(points, radius):
     return neighbor_indices
 
 
+def calcEig(input_tuple):  # neighborSet, k_neighborSet, points, weights, index_set
+    result = []
+    in_neighborSet = input_tuple[0]
+    in_k_neighborSet = input_tuple[1]
+    in_points = input_tuple[2]
+    in_weights = input_tuple[3]
+    in_index_set = input_tuple[4]
+    for i in in_index_set:
+        if len(in_neighborSet[i]) < 50:
+            in_neighborSet[i] = in_k_neighborSet[i]
+        # if i in neighborSet[i]:
+        #     print(i)
+        d_vectors = in_points[i] - in_points[in_neighborSet[i]]
+        X = np.multiply(in_weights[in_neighborSet[i]].reshape(d_vectors.shape[0], 1), d_vectors).T
+        Y = d_vectors
+        cov = np.dot(X, Y) * in_weights[i]
+        eigvalue, eigvector = np.linalg.eig(cov)
+        idx = np.argsort(eigvalue)
+        eigvalue = eigvalue[idx]
+        eigvector = eigvector[idx]
+        result.append(np.vstack((eigvalue, eigvector)))
+    return np.stack(result)
+
+
 def computeISS(points, t1=0.95, t2=0.95, rate=2, radius=7 / 3):
     point_size = points.shape[0]
     index_set = np.arange(point_size)
@@ -34,28 +58,30 @@ def computeISS(points, t1=0.95, t2=0.95, rate=2, radius=7 / 3):
     k_neighborSet = getKNeighbors(points, 50)
 
     def calcWeight(index):
-        weight = 1 / (neighborSet[index[0]].shape[0] + 1)
+        weight = 1 / (neighborSet[index].shape[0] + 1)
         return weight
+    weight_list = [calcWeight(i) for i in index_set]
+    weights = np.stack(weight_list)
 
-    weights = np.apply_along_axis(calcWeight, -1, index_set.reshape(point_size, 1))
 
-    def calcEig(index):
-        i = index[0]
-        if len(neighborSet[i]) < 50:
-            neighborSet[i] = k_neighborSet[i]
-        if i in neighborSet[i]:
-            print(i)
-        d_vectors = points[i] - points[neighborSet[i]]
-        X = np.multiply(weights[neighborSet[i]].reshape(d_vectors.shape[0], 1), d_vectors).T
-        Y = d_vectors
-        cov = np.dot(X, Y) * weights[i]
-        eigvalue, eigvector = np.linalg.eig(cov)
-        idx = np.argsort(eigvalue)
-        eigvalue = eigvalue[idx]
-        eigvector = eigvector[idx]
-        return np.vstack((eigvalue, eigvector))
+    tic = time.time()
+    Eig = calcEig((neighborSet, k_neighborSet, points, weights, index_set))
+    tic1 = time.time()
 
-    Eig = np.apply_along_axis(calcEig, -1, index_set.reshape(point_size, 1))
+    # num_processes = 4
+    #
+    # split_sets = np.split(index_set, num_processes)
+    # input_list = []
+    # for i in range(num_processes):
+    #     input_tuple = (neighborSet, k_neighborSet, points, weights, split_sets[i])
+    #     input_list.append(input_tuple)
+    #
+    # pool = Pool(processes=num_processes)
+    # results = pool.map_async(calcEig, input_list).get()
+    # pool.close()
+    # tic2 = time.time()
+    # print(len(results), results[0].shape)
+    # print('Multiprocess Eig time:', tic2 - tic1)
     eigvalues = Eig[:, 0, :]
     eigvectors = Eig[:, 1, :]
     threshold = np.median(eigvalues, axis=0)[0] * rate
@@ -110,72 +136,76 @@ def getLMA(points, eigvectors, radius=7):
     return LRAs
 
 
+def calcDLFS(input_tuple):  # R, neighbor_indices, points, LMA, key_index, N=[5, 9, 12, 12, 15], lamda=[0.6, 1.1, 1, 0.9]
+    R, neighbor_indices, points, LMA, key_index, N, lamda = input_tuple
+    LRA = LMA[key_index]
+    pq = points[neighbor_indices[key_index]] - points[key_index]
+    distances = np.linalg.norm(np.cross(LRA, pq), axis=1)
+    lh = np.sum((LRA * pq), axis=1) + R
+    cross = np.cross(LRA, pq)
+    cross_norms = np.linalg.norm(np.cross(LRA, pq), axis=1)
+    cross_nonzero = cross_norms > 0
+    cross_norms.reshape(cross.shape[0], 1)
+    cross_temp = np.copy(cross_norms[cross_nonzero])
+    cross[cross_nonzero] = cross[cross_nonzero] / cross_temp.reshape(cross_temp.shape[0], 1)
+
+    temp = np.sum(cross * LMA[neighbor_indices[key_index]], axis=1)
+    temp[temp > 1] = 1
+    temp[temp < -1] = -1
+    alpha = np.arccos(temp)
+
+    LMA1 = LMA[neighbor_indices[key_index]] - temp.reshape([temp.shape[0], 1]) * np.cross(LRA, pq)
+    LMA1_norm = np.linalg.norm(LMA1, axis=1)
+    LMA1_nonzero = LMA1_norm > 0
+    LMA1[LMA1_nonzero] = LMA1[LMA1_nonzero] / LMA1_norm[LMA1_nonzero].reshape(LMA1_norm[LMA1_nonzero].shape[0], 1)
+
+    temp2 = np.sum(LRA * LMA1, axis=1)
+    temp2[temp2 > 1] = 1
+    temp2[temp2 < -1] = -1
+    beta = np.arccos(temp2)
+
+    temp3 = np.sum(pq * LMA1, axis=1) / np.linalg.norm(pq, axis=1)
+    temp3[temp3 > 1] = 1
+    temp3[temp3 < -1] = -1
+    gamma = np.arccos(np.sum(pq * LMA1, axis=1) / np.linalg.norm(pq, axis=1))
+
+    H_lh = np.empty((N[0], N[1]))
+    H_alpha = np.empty((N[0], N[2]))
+    H_beta = np.empty((N[0], N[3]))
+    H_gamma = np.empty((N[0], N[4]))
+    for i in range(N[0]):
+        indices = np.logical_and(i * R / N[0] < distances, distances <= (i + 1) * R / N[0])
+        H_lh[i] = np.histogram(lh[indices], bins=N[1], range=(0, 2 * R))[0]
+        if np.sum(H_lh[i]) != 0:
+            H_lh[i] /= np.sum(H_lh[i])
+
+        H_alpha[i] = np.histogram(alpha[indices], bins=N[2], range=(0, np.pi))[0]
+        if np.sum(H_alpha[i]) != 0:
+            H_alpha[i] /= np.sum(H_alpha[i])
+
+        H_beta[i] = np.histogram(beta[indices], bins=N[3], range=(0, np.pi))[0]
+        if np.sum(H_beta[i]) != 0:
+            H_beta[i] /= np.sum(H_beta[i])
+
+        H_gamma[i] = np.histogram(gamma[indices], bins=N[4], range=(0, np.pi))[0]
+        if np.sum(H_gamma[i]) != 0:
+            H_gamma[i] /= np.sum(H_gamma[i])
+
+    result = np.hstack((lamda[0] * H_lh,
+                        lamda[1] * H_alpha,
+                        lamda[2] * H_beta,
+                        lamda[3] * H_gamma))
+    return result
+
+
 def getDLFS(points, LMA, key_indices, N=[5, 9, 12, 12, 15], lamda=[0.6, 1.1, 1, 0.9], R=20):
     neighbor_indices = getNeighbors(points, radius=R)
 
-    def calcDLFS(key_index):
-        key_index = key_index[0]
-        LRA = LMA[key_index]
-        pq = points[neighbor_indices[key_index]] - points[key_index]
-        distances = np.linalg.norm(np.cross(LRA, pq), axis=1)
-        lh = np.sum((LRA * pq), axis=1) + R
-        cross = np.cross(LRA, pq)
-        cross_norms = np.linalg.norm(np.cross(LRA, pq), axis=1)
-        cross_nonzero = cross_norms > 0
-        cross_norms.reshape(cross.shape[0], 1)
-        cross_temp = np.copy(cross_norms[cross_nonzero])
-        cross[cross_nonzero] = cross[cross_nonzero] / cross_temp.reshape(cross_temp.shape[0], 1)
-
-        temp = np.sum(cross * LMA[neighbor_indices[key_index]], axis=1)
-        temp[temp > 1] = 1
-        temp[temp < -1] = -1
-        alpha = np.arccos(temp)
-
-        LMA1 = LMA[neighbor_indices[key_index]] - temp.reshape([temp.shape[0], 1]) * np.cross(LRA, pq)
-        LMA1_norm = np.linalg.norm(LMA1, axis=1)
-        LMA1_nonzero = LMA1_norm > 0
-        LMA1[LMA1_nonzero] = LMA1[LMA1_nonzero] / LMA1_norm[LMA1_nonzero].reshape(LMA1_norm[LMA1_nonzero].shape[0], 1)
-
-        temp2 = np.sum(LRA * LMA1, axis=1)
-        temp2[temp2 > 1] = 1
-        temp2[temp2 < -1] = -1
-        beta = np.arccos(temp2)
-
-        temp3 = np.sum(pq * LMA1, axis=1) / np.linalg.norm(pq, axis=1)
-        temp3[temp3 > 1] = 1
-        temp3[temp3 < -1] = -1
-        gamma = np.arccos(np.sum(pq * LMA1, axis=1) / np.linalg.norm(pq, axis=1))
-
-        H_lh = np.empty((N[0], N[1]))
-        H_alpha = np.empty((N[0], N[2]))
-        H_beta = np.empty((N[0], N[3]))
-        H_gamma = np.empty((N[0], N[4]))
-        for i in range(N[0]):
-            indices = np.logical_and(i * R / N[0] < distances, distances <= (i + 1) * R / N[0])
-            H_lh[i] = np.histogram(lh[indices], bins=N[1], range=(0, 2 * R))[0]
-            if np.sum(H_lh[i]) != 0:
-                H_lh[i] /= np.sum(H_lh[i])
-
-            H_alpha[i] = np.histogram(alpha[indices], bins=N[2], range=(0, np.pi))[0]
-            if np.sum(H_alpha[i]) != 0:
-                H_alpha[i] /= np.sum(H_alpha[i])
-
-            H_beta[i] = np.histogram(beta[indices], bins=N[3], range=(0, np.pi))[0]
-            if np.sum(H_beta[i]) != 0:
-                H_beta[i] /= np.sum(H_beta[i])
-
-            H_gamma[i] = np.histogram(gamma[indices], bins=N[4], range=(0, np.pi))[0]
-            if np.sum(H_gamma[i]) != 0:
-                H_gamma[i] /= np.sum(H_gamma[i])
-
-        result = np.hstack((lamda[0] * H_lh,
-                            lamda[1] * H_alpha,
-                            lamda[2] * H_beta,
-                            lamda[3] * H_gamma))
-        return result
-
-    histograms = np.apply_along_axis(calcDLFS, -1, key_indices.reshape(key_indices.shape[0], 1))
-
+    histograms = np.stack([calcDLFS((R, neighbor_indices, points, LMA, i, N, lamda)) for i in key_indices])
+    # num_processes = 4
+    # pool = Pool(processes=num_processes)
+    # results = pool.map(calcDLFS, [(R, neighbor_indices, points, LMA, i, N, lamda) for i in key_indices])
+    # histograms = np.stack(results)
     return histograms
 
 
