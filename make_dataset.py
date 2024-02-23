@@ -3,7 +3,7 @@ import shutil
 import json
 
 
-source_dir = r"C:\Users\Admin\CAD_parts_test"
+source_dir = r"C:\Users\Admin\CAD_parts"
 test_dir = r"C:\Users\Admin\dataset_test"
 
 meta = []
@@ -11,10 +11,10 @@ meta = []
 for folder in os.listdir(source_dir):
     if not os.path.isdir(os.path.join(source_dir, folder)):
         continue
-    if folder in ['update', 'temp_update', 'delete']:
+    if folder in ['update', 'temp_update', 'delete', 'unclassified']:
         continue
-    if not folder[0] in ['B']:
-        continue
+    # if not folder.lower().startswith("b"):
+    #     continue
     print(folder)
     for stl_file in os.listdir(os.path.join(source_dir, folder, 'STL')):
         if not stl_file.endswith('.stl'):
@@ -23,8 +23,8 @@ for folder in os.listdir(source_dir):
         d['partName'] = stl_file[:-4]
         d['partType'] = folder
         d['clientInfo'] = 'None'
-        d['uploaded'] = False
-        d['trained'] = False
+        d['uploaded'] = "0"
+        d['trained'] = "0"
         shutil.copy(os.path.join(source_dir, folder, 'STL', stl_file),
                     os.path.join(test_dir, 'STL', stl_file))
         meta.append(d)
@@ -45,6 +45,6 @@ for folder in os.listdir(source_dir):
                     os.path.join(test_dir, 'DCT', dct_file))
 
 meta = json.dumps(meta, indent=2, ensure_ascii=False)
-with open(test_dir+'\meta.json', 'w') as meta_json:
+with open(test_dir+'/meta.json', 'w') as meta_json:
     meta_json.write(meta)
     meta_json.close()

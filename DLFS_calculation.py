@@ -3,8 +3,8 @@ import time
 # import pymeshlab
 import numpy as np
 import trimesh
+import open3d
 from sklearn.neighbors import NearestNeighbors
-
 
 # def simplification(path):
 #     ms = pymeshlab.MeshSet()
@@ -42,12 +42,12 @@ def calcEig(input_tuple):  # neighborSet, k_neighborSet, points, weights, index_
         d_vectors = in_points[i] - in_points[in_neighborSet[i]]
         X = np.multiply(in_weights[in_neighborSet[i]].reshape(d_vectors.shape[0], 1), d_vectors).T
         Y = d_vectors
-        cov = np.dot(X, Y) * in_weights[i]
+        cov = np.dot(X, Y) / np.sum(in_weights[in_neighborSet[i]])
         eigvalue, eigvector = np.linalg.eig(cov)
         idx = np.argsort(eigvalue)
         eigvalue = eigvalue[idx]
         eigvector = eigvector[idx]
-        result.append(np.vstack((eigvalue, eigvector)))
+        result.append(np.vstack((eigvalue, eigvector.T)))
     return np.stack(result)
 
 
@@ -63,25 +63,9 @@ def computeISS(points, t1=0.95, t2=0.95, rate=2, radius=7 / 3):
     weight_list = [calcWeight(i) for i in index_set]
     weights = np.stack(weight_list)
 
-
     tic = time.time()
     Eig = calcEig((neighborSet, k_neighborSet, points, weights, index_set))
     tic1 = time.time()
-
-    # num_processes = 4
-    #
-    # split_sets = np.split(index_set, num_processes)
-    # input_list = []
-    # for i in range(num_processes):
-    #     input_tuple = (neighborSet, k_neighborSet, points, weights, split_sets[i])
-    #     input_list.append(input_tuple)
-    #
-    # pool = Pool(processes=num_processes)
-    # results = pool.map_async(calcEig, input_list).get()
-    # pool.close()
-    # tic2 = time.time()
-    # print(len(results), results[0].shape)
-    # print('Multiprocess Eig time:', tic2 - tic1)
     eigvalues = Eig[:, 0, :]
     eigvectors = Eig[:, 1, :]
     threshold = np.median(eigvalues, axis=0)[0] * rate
@@ -89,32 +73,6 @@ def computeISS(points, t1=0.95, t2=0.95, rate=2, radius=7 / 3):
     choice = np.random.randint(0, point_size, 300)
     key_indices = np.append(sorted_idx[-700:], sorted_idx[choice])
     # key_indices = sorted_idx[-1000:]
-    '''
-    def acceptIndex(index):
-        i = index[0]
-        print(len(neighborSet[i]))
-        if t1 * eigvalues[i][1] > eigvalues[i][0] and t2 * eigvalues[i][2] > eigvalues[i][1]:
-            if eigvalues[i][0] > threshold:
-                return True
-        return False
-    indices = index_set[np.apply_along_axis(acceptIndex, -1, index_set.reshape(point_size, 1))]
-    unvisited = set(indices)
-    key_indices = np.zeros(1)
-
-    # 去掉某些太靠近的关键点
-    while len(unvisited):
-        core = list(unvisited)[np.random.randint(0, len(unvisited))]  # 从 关键点集T 中随机选取一个 关键点core
-        core_neighbors = neighborSet[core]
-        cluster = set(np.append(core_neighbors, [core]))
-        cluster = cluster & unvisited
-        unvisited = unvisited - cluster
-        cluster_linda0 = []
-        for i in list(cluster):
-            cluster_linda0.append(eigvalues[i][0])  # 获取每个关键点协方差矩阵的最小特征值
-        cluster_linda0 = np.asarray(cluster_linda0)
-        NMS_OUTPUT = np.argmax(cluster_linda0)
-        key_indices = np.append(key_indices, list(cluster)[NMS_OUTPUT])
-    '''
     return key_indices, neighborSet, eigvectors
 
 
@@ -141,7 +99,7 @@ def calcDLFS(input_tuple):  # R, neighbor_indices, points, LMA, key_index, N=[5,
     LRA = LMA[key_index]
     pq = points[neighbor_indices[key_index]] - points[key_index]
     distances = np.linalg.norm(np.cross(LRA, pq), axis=1)
-    lh = np.sum((LRA * pq), axis=1) + R
+    lh = pq @ LRA + R
     cross = np.cross(LRA, pq)
     cross_norms = np.linalg.norm(np.cross(LRA, pq), axis=1)
     cross_nonzero = cross_norms > 0
@@ -154,12 +112,12 @@ def calcDLFS(input_tuple):  # R, neighbor_indices, points, LMA, key_index, N=[5,
     temp[temp < -1] = -1
     alpha = np.arccos(temp)
 
-    LMA1 = LMA[neighbor_indices[key_index]] - temp.reshape([temp.shape[0], 1]) * np.cross(LRA, pq)
+    LMA1 = LMA[neighbor_indices[key_index]] - temp.reshape([temp.shape[0], 1]) * cross
     LMA1_norm = np.linalg.norm(LMA1, axis=1)
     LMA1_nonzero = LMA1_norm > 0
     LMA1[LMA1_nonzero] = LMA1[LMA1_nonzero] / LMA1_norm[LMA1_nonzero].reshape(LMA1_norm[LMA1_nonzero].shape[0], 1)
 
-    temp2 = np.sum(LRA * LMA1, axis=1)
+    temp2 = LMA1 @ LRA
     temp2[temp2 > 1] = 1
     temp2[temp2 < -1] = -1
     beta = np.arccos(temp2)
@@ -167,29 +125,30 @@ def calcDLFS(input_tuple):  # R, neighbor_indices, points, LMA, key_index, N=[5,
     temp3 = np.sum(pq * LMA1, axis=1) / np.linalg.norm(pq, axis=1)
     temp3[temp3 > 1] = 1
     temp3[temp3 < -1] = -1
-    gamma = np.arccos(np.sum(pq * LMA1, axis=1) / np.linalg.norm(pq, axis=1))
+    gamma = np.arccos(temp3)
 
-    H_lh = np.empty((N[0], N[1]))
-    H_alpha = np.empty((N[0], N[2]))
-    H_beta = np.empty((N[0], N[3]))
-    H_gamma = np.empty((N[0], N[4]))
+    H_lh = np.zeros((N[0], N[1]))
+    H_alpha = np.zeros((N[0], N[2]))
+    H_beta = np.zeros((N[0], N[3]))
+    H_gamma = np.zeros((N[0], N[4]))
     for i in range(N[0]):
         indices = np.logical_and(i * R / N[0] < distances, distances <= (i + 1) * R / N[0])
         H_lh[i] = np.histogram(lh[indices], bins=N[1], range=(0, 2 * R))[0]
+        H_alpha[i] = np.histogram(alpha[indices], bins=N[2], range=(0, np.pi))[0]
+        H_beta[i] = np.histogram(beta[indices], bins=N[3], range=(0, np.pi))[0]
+        H_gamma[i] = np.histogram(gamma[indices], bins=N[4], range=(0, np.pi))[0]
+
         if np.sum(H_lh[i]) != 0:
             H_lh[i] /= np.sum(H_lh[i])
-
-        H_alpha[i] = np.histogram(alpha[indices], bins=N[2], range=(0, np.pi))[0]
-        if np.sum(H_alpha[i]) != 0:
             H_alpha[i] /= np.sum(H_alpha[i])
-
-        H_beta[i] = np.histogram(beta[indices], bins=N[3], range=(0, np.pi))[0]
-        if np.sum(H_beta[i]) != 0:
             H_beta[i] /= np.sum(H_beta[i])
-
-        H_gamma[i] = np.histogram(gamma[indices], bins=N[4], range=(0, np.pi))[0]
-        if np.sum(H_gamma[i]) != 0:
             H_gamma[i] /= np.sum(H_gamma[i])
+
+    # print("lh: ", np.sum(H_lh == 0), "zeros")
+    # print("alpha: ", np.sum(H_alpha == 0), "zeros")
+    # print("beta: ", np.sum(H_beta == 0), "zeros")
+    # print("gamma: ", np.sum(H_gamma == 0), "zeros")
+    # print()
 
     result = np.hstack((lamda[0] * H_lh,
                         lamda[1] * H_alpha,
@@ -277,11 +236,33 @@ def computeDLFS(data_dir, mode='update'):
 
 
 # computeDLFS(r'C:\Users\Admin\模型分类_mesh')
-
-# mesh = trimesh.load_mesh(r'C:/Users/Admin/模型分类/新建文件夹/8 (2).stl')
-# points = trimesh.sample.sample_surface(mesh, 10000)[0]
-# mr = meshResolution(points)
-# key_indices, neighborSet, eigvectors = computeISS(points, radius=7/3*mr)
-# keypoints = points[key_indices]
-# pcd = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(keypoints))
-# open3d.visualization.draw([pcd])
+if __name__ == '__main__':
+    mesh = open3d.io.read_triangle_mesh(r'C:\\Users\\Admin\\Bearings_0.stl')
+    pcd = mesh.sample_points_uniformly(50000)
+    points = np.asarray(pcd.points)
+    mr = meshResolution(points)
+    key_indices, neighborSet, eigvectors = computeISS(points, radius=5*mr)
+    keypoints = points[key_indices]
+    LMA = getLMA(points, eigvectors, radius=7 * mr)
+    DLFS = getDLFS(points, LMA, key_indices, R=20 * mr)
+    zero_lh = np.sum(DLFS[:, :, :9] == 0)
+    zero_alpha = np.sum(DLFS[:, :, 9:21] == 0)
+    zero_beta = np.sum(DLFS[:, :, 21:33] == 0)
+    zero_gamma = np.sum(DLFS[:, :, 33:48] == 0)
+    zero_range = np.zeros(5)
+    for i in range(5):
+        zero_range[i] = np.sum(DLFS[:, i, :] == 0)
+    print("zero_lh", zero_lh)
+    print("zero_alpha", zero_alpha)
+    print("zero_beta", zero_beta)
+    print("zero_gamma", zero_gamma)
+    print("zero_range", zero_range)
+    DLFS = DLFS.reshape(DLFS.shape[0], DLFS.shape[1] * DLFS.shape[2])
+    # import matplotlib.pyplot as plt
+    # x = points[key_indices][:, 0]
+    # y = points[key_indices][:, 1]
+    # z = points[key_indices][:, 2]
+    # fig = plt.figure()
+    # ax = plt.axes(projection='3d')
+    # ax.scatter3D(x, y, z, color='red', s=1)
+    # plt.show()

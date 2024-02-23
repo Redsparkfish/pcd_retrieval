@@ -1,3 +1,4 @@
+import numpy as np
 import scipy.spatial.distance
 from scipy.spatial.distance import cdist
 from DLFS_calculation import *
@@ -67,15 +68,20 @@ def retrieve_test(meta, mesh_path, high_kmeans, kmeans_list, k=10):
     if d:
         d2 = d['d2_desc']
         bof_desc = d['bof_desc']
-        scale_par = d['param_desc']
+        scale_par = np.array(d['param_desc'])
     else:
         mesh = trimesh.load_mesh(mesh_path)
         d2, bof_desc = calcDescriptors(mesh, high_kmeans, kmeans_list)
         scale_par = np.zeros(17, dtype=float)
 
     query_desc = np.hstack((scale_par, d2, bof_desc))
+    stl_desc = np.hstack((d2, bof_desc))
 
+    stl_dists = cdist(stl_desc.reshape(1, stl_desc.shape[0]), stl_descs, metric="cityblock")
+    par_dists = 0.1*cdist(scale_par.reshape(1, scale_par.shape[0]), par_descs, metric='canberra')
     dists = cdist(query_desc.reshape(1, query_desc.shape[0]), fuse_descs, metric=custom_dist)
+    s = np.vstack((stl_dists[0], par_dists[0], dists[0])).T
+    print(np.sum(s, axis=0))
     close_idx = np.argsort(dists[0])
 
     similarities = [calcSimilarity(query_desc, desc) for desc in fuse_descs]
@@ -120,7 +126,7 @@ if __name__ == '__main__':
     k = args.retrievalNum
     configPath = args.configPath
 
-    file = open(configPath, 'r')
+    file = open(configPath, 'r', encoding='utf-8')
     config = json.load(file)
     data_dir = config['data_dir']
 
@@ -137,6 +143,7 @@ if __name__ == '__main__':
     par_descs = np.vstack([meta[i]['param_desc'] for i in range(len(meta))])
     d2_list = np.vstack([meta[i]['d2_desc'] for i in range(len(meta))])
     bof_descs = np.vstack([meta[i]['bof_desc'] for i in range(len(meta))])
+    stl_descs = np.hstack((d2_list, bof_descs))
     fuse_descs = np.hstack((par_descs, d2_list, bof_descs))
 
     tic1 = time.time()

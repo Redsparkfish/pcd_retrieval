@@ -48,7 +48,7 @@ def SQL_upload(meta, config):
         d['uploaded'] = True
         i += 1
 
-    # db.commit()
+    db.commit()
     cursor.close()
     db.close()
     print("Uploading has finished.")

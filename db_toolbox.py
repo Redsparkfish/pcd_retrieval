@@ -124,8 +124,9 @@ def stp():
         try:
             scale_par = param_desc(data_dir, category, name)
         except:
+            print(f'scale param for {name} failed.\n')
             bug_file.write(f'scale param for {name} failed.\n')
-            scale_par = np.zeros(17, dtype=float).tolist()
+            scale_par = np.zeros(17, dtype=float)
         print(name, 'param_desc calculated.')
         d['param_desc'] = scale_par.tolist()
     meta = json.dumps(meta, indent=2, ensure_ascii=False)
